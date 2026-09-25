@@ -6,7 +6,7 @@ const bcrypt = require('bcrypt');
 
 process.env.NODE_ENV = 'bench';
 const { connectDB, ensureIndexes } = require('../server/src/infra/db');
-const { User, Company, Job, Application, RecruiterProfile, JobSeekerProfile } = require('../server/src/models');
+const { User, Company, Job, Application, RecruiterProfile, JobSeekerProfile, Resume } = require('../server/src/models');
 
 const BENCH_URI = process.env.BENCH_MONGO_URI || 'mongodb://127.0.0.1:27017/job_portal_bench?replicaSet=rs0';
 const N = { companies: 300, seekers: 5000, jobs: Number(process.argv[2]) || 20000, apps: Number(process.argv[3]) || 60000 };
@@ -65,14 +65,16 @@ const chunk = async (arr, size, fn) => {
     role: 'JOB_SEEKER'
   }));
   await chunk(seekerDocs, 1000, async (c) => seekers.push(...(await User.insertMany(c))));
-  const fileId = new mongoose.Types.ObjectId();
-  await JobSeekerProfile.insertMany(
-    seekers.map((s) => ({
-      user: s._id,
-      skills: [pick(skillPool)],
-      resume: { fileId, originalName: 'r.pdf', mimeType: 'application/pdf', size: 1000 }
-    }))
-  );
+  // One shared resume document (the bytes are never read by the benchmark).
+  const resume = await Resume.create({
+    owner: seekers[0]._id,
+    fileId: new mongoose.Types.ObjectId(),
+    originalName: 'r.pdf',
+    mimeType: 'application/pdf',
+    size: 1000,
+    sha256: '0'.repeat(64)
+  });
+  await JobSeekerProfile.insertMany(seekers.map((s) => ({ user: s._id, skills: [pick(skillPool)], resume: resume._id })));
 
   const jobs = [];
   const jobDocs = Array.from({ length: N.jobs }, () => {
@@ -115,7 +117,7 @@ const chunk = async (arr, size, fn) => {
       applicant: s._id,
       status: pick(statuses),
       appliedAt: new Date(Date.now() - Math.floor(Math.random() * 90) * 864e5),
-      resumeSnapshot: { fileId, originalName: 'r.pdf', mimeType: 'application/pdf', size: 1000 },
+      resume: resume._id,
       statusHistory: [{ status: 'APPLIED', changedBy: s._id }]
     });
   }

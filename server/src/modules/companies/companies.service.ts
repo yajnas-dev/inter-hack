@@ -1,45 +1,58 @@
-import type { CompanyBody } from '@jobportal/shared';
+import type { CompanyBody, CompanyDTO, CompanyUpdateBody } from '@jobportal/shared';
 import { withTransaction } from '../../infra/db';
 import { events } from '../../infra/events';
-import { forbidden, notFound } from '../../http/errors';
-import { Application, Company, Job, RecruiterProfile } from '../../models';
-import { withId } from '../../utils/serialize';
+import { ConflictError, NotFoundError } from '../../http/errors';
+import { assertCanEditCompany, forgetRecruiterCompany, recruiterCompanyId } from '../../policies/access';
+import * as applications from '../../repositories/application.repository';
+import * as companies from '../../repositories/company.repository';
+import * as jobs from '../../repositories/job.repository';
+import * as profiles from '../../repositories/profile.repository';
+import { presentCompany } from '../../utils/presenters';
 
-const definedFields = (body: Partial<CompanyBody>) => Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined));
+type User = Express.AuthUser;
 
-export async function createCompany(userId: string, body: CompanyBody) {
+const defined = <T extends object>(body: T): Partial<T> =>
+  Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) as Partial<T>;
+
+/** A recruiter registers exactly one company and is linked to it in the same transaction. */
+export async function createCompany(user: User, body: CompanyBody): Promise<CompanyDTO> {
+  if (await recruiterCompanyId(user.id)) throw new ConflictError('You already have a company profile', 'COMPANY_EXISTS');
+
+  // The unique index on createdBy settles a race between two simultaneous creates (-> 409 COMPANY_EXISTS).
   const company = await withTransaction(async (session) => {
-    const [created] = await Company.create([{ ...definedFields(body), createdBy: userId }], { session });
-    await RecruiterProfile.updateOne({ user: userId }, { $set: { company: created!._id } }, { upsert: true, session });
-    return created!;
+    const created = await companies.create({ ...defined(body), name: body.name, createdBy: user.id }, session);
+    await profiles.setCompany(user.id, created._id, session);
+    return created;
   });
-  return withId(company);
+  forgetRecruiterCompany(user.id);
+  events.emit('company.changed', { companyId: String(company._id), recruiterId: user.id });
+  return presentCompany(company);
 }
 
-export async function getCompany(id: string) {
-  const company = await Company.findById(id).lean();
-  if (!company) throw notFound('Company not found');
-  return withId(company);
+export async function getCompany(id: string): Promise<CompanyDTO> {
+  const company = await companies.findById(id);
+  if (!company) throw new NotFoundError('Company');
+  return presentCompany(company);
 }
 
-export async function updateCompany(id: string, userId: string, body: Partial<CompanyBody>) {
-  const existing = await Company.findById(id).select('createdBy').lean();
-  if (!existing) throw notFound('Company not found');
-  if (String(existing.createdBy) !== userId) throw forbidden('You do not own this company profile');
+/** Jobs and applications carry snapshots of the company's display fields; they change in the same transaction. */
+export async function updateCompany(user: User, id: string, body: CompanyUpdateBody): Promise<CompanyDTO> {
+  if (!(await companies.findById(id))) throw new NotFoundError('Company');
+  await assertCanEditCompany(user, id);
 
-  const changes = definedFields(body);
+  const changes = defined(body);
   const snapshotChanged = 'name' in changes || 'logoUrl' in changes;
 
   const updated = await withTransaction(async (session) => {
-    const company = await Company.findByIdAndUpdate(id, { $set: changes }, { new: true, runValidators: true, session }).lean();
-    // Jobs and applications carry snapshots of the company's display fields; keep them in sync atomically.
+    const company = await companies.update(id, changes, session);
     if (company && snapshotChanged) {
-      await Job.updateMany({ company: id }, { $set: { companyName: company.name, companyLogoUrl: company.logoUrl } }, { session });
-      if ('name' in changes) await Application.updateMany({ company: id }, { $set: { companyName: company.name } }, { session });
+      await jobs.syncCompanySnapshot(id, { companyName: company.name, companyLogoUrl: company.logoUrl }, session);
+      if ('name' in changes) await applications.syncCompanyName(id, company.name, session);
     }
     return company;
   });
+  if (!updated) throw new NotFoundError('Company');
 
   if (snapshotChanged) events.emit('jobs.changed', {});
-  return withId(updated);
+  return presentCompany(updated);
 }

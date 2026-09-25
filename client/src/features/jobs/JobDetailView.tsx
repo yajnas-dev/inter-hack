@@ -8,11 +8,13 @@ import { Icon } from '../../shared/ui/Icon';
 import { Menu, MenuItem } from '../../shared/ui/Menu';
 import { useToast } from '../../shared/ui/toast';
 import { useAuth } from '../auth/AuthContext';
-import { useJob, useSimilarJobs } from './api';
+import MatchPanel from '../matching/MatchPanel';
+import { useJob, useJobMatch, useSimilarJobs } from './api';
 import ApplyDialog from './ApplyDialog';
 import JobCard from './JobCard';
 import SaveButton from './SaveButton';
 import { useSeekerJobState } from './seekerState';
+import { skillMatch, useMySkills } from './skillMatch';
 
 function Fact({ icon, label, value }: { icon: 'pin' | 'briefcase' | 'money' | 'clock' | 'award' | 'users'; label: string; value: string }) {
   return (
@@ -27,11 +29,46 @@ function Fact({ icon, label, value }: { icon: 'pin' | 'briefcase' | 'money' | 'c
 }
 
 /** The job detail: used as a full page and as the right-hand pane of the split view. */
+function SkillMatchBox({ required, mine }: { required: string[]; mine: Set<string> }) {
+  const { have, missing } = skillMatch(required, mine);
+  return (
+    <section className="match-box" aria-label="How your skills compare">
+      <strong>
+        You list {have.length} of {required.length} required skills
+      </strong>
+      {have.length > 0 && (
+        <div className="tags">
+          {have.map((s) => (
+            <span key={s} className="tag tag-have">
+              {s} (you have this)
+            </span>
+          ))}
+        </div>
+      )}
+      {missing.length > 0 && (
+        <div className="tags">
+          {missing.map((s) => (
+            <span key={s} className="tag tag-missing">
+              {s} (not on your profile)
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Keyed by job id so switching jobs in the split view starts a fresh analysis. */
+function SeekerMatch({ jobId }: { jobId: string }) {
+  return <MatchPanel mutation={useJobMatch(jobId)} audience="seeker" />;
+}
+
 export default function JobDetailView({ id, pane }: { id: string; pane?: boolean }) {
   const job = useJob(id);
   const similar = useSimilarJobs(id);
   const { user } = useAuth();
   const state = useSeekerJobState();
+  const mySkills = useMySkills();
   const navigate = useNavigate();
   const toast = useToast();
   const [applying, setApplying] = useState(false);
@@ -140,6 +177,9 @@ export default function JobDetailView({ id, pane }: { id: string; pane?: boolean
           <Fact icon="users" label="Openings" value={String(j.vacancies ?? 1)} />
           <Fact icon="clock" label="Posted" value={formatDate(j.createdAt)} />
         </div>
+
+        {mySkills && j.requiredSkills.length > 0 && <SkillMatchBox required={j.requiredSkills} mine={mySkills} />}
+        {user?.role === 'JOB_SEEKER' && <SeekerMatch key={j.id} jobId={j.id} />}
 
         {j.requiredSkills.length > 0 && (
           <section aria-labelledby={`skills-${j.id}`}>

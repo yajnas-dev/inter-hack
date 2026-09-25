@@ -12,8 +12,8 @@ const recruiterProfileSchema = new Schema<RecruiterProfileAttrs>(
   {
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     company: { type: Schema.Types.ObjectId, ref: 'Company', index: true },
-    designation: String,
-    phone: String
+    designation: { type: String, maxlength: 120 },
+    phone: { type: String, maxlength: 30 }
   },
   { timestamps: true, autoIndex: false }
 );

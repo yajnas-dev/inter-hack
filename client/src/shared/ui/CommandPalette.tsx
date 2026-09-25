@@ -18,11 +18,14 @@ export interface Command {
 export function CommandPalette({
   open,
   onClose,
-  pages
+  pages,
+  searches = []
 }: {
   open: boolean;
   onClose: () => void;
   pages: Array<{ to: string; label: string }>;
+  /** Saved and recent job searches, offered as one-key shortcuts. */
+  searches?: Array<{ to: string; label: string; kind: 'Saved' | 'Recent' }>;
 }) {
   const navigate = useNavigate();
   const listId = useId();
@@ -56,10 +59,14 @@ export function CommandPalette({
       if (!lower || p.label.toLowerCase().includes(lower))
         list.push({ id: p.to, label: p.label, icon: 'right', hint: 'Go to', run: go(p.to) });
     }
+    for (const s of searches) {
+      if (!lower || s.label.toLowerCase().includes(lower))
+        list.push({ id: `search:${s.to}`, label: s.label, icon: 'search', hint: s.kind, run: go(s.to) });
+    }
     if (!lower || 'all jobs'.includes(lower))
       list.push({ id: 'all', label: 'Browse all jobs', icon: 'briefcase', hint: 'Jobs', run: go('/jobs') });
     return list;
-  }, [query, pages, navigate, onClose]);
+  }, [query, pages, searches, navigate, onClose]);
 
   const current = commands[Math.min(active, commands.length - 1)];
 

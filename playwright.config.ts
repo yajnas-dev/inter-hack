@@ -14,7 +14,7 @@ export default defineConfig({
   use: { baseURL: `http://127.0.0.1:${PORT}`, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   webServer: {
     command: 'node server/dist/cluster.js',
-    url: `http://127.0.0.1:${PORT}/api/ready`,
+    url: `http://127.0.0.1:${PORT}/api/v1/health/ready`,
     reuseExistingServer: false,
     timeout: 60_000,
     env: {
@@ -25,7 +25,9 @@ export default defineConfig({
       WEB_CONCURRENCY: '2',
       LOG_LEVEL: 'error',
       RATE_LIMIT_PER_MIN: '1000000',
-      AUTH_RATE_LIMIT: '1000000'
+      AUTH_RATE_LIMIT: '1000000',
+      // Served over plain http on 127.0.0.1 in tests; production (HTTPS) keeps the Secure default.
+      COOKIE_SECURE: 'false'
     }
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }]

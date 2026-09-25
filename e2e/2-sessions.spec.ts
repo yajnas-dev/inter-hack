@@ -9,7 +9,7 @@ test.describe('sessions and access control', () => {
 
     const cookie = (await context.cookies()).find((c) => c.name === 'jp_refresh');
     expect(cookie?.httpOnly).toBe(true);
-    expect(cookie?.sameSite).toBe('Lax');
+    expect(cookie?.sameSite).toBe('Strict'); // never sent on cross-site requests
     expect(await page.evaluate(() => document.cookie)).not.toContain('jp_refresh'); // invisible to scripts
     expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toMatch(/token/i); // nothing stored for XSS to steal
 
@@ -25,7 +25,7 @@ test.describe('sessions and access control', () => {
     await expect(page).toHaveURL(/\/login$/); // protected pages bounce to login
 
     // The revoked refresh token is dead server-side too, not merely forgotten by the browser.
-    const replay = await page.request.post('/api/auth/refresh', {
+    const replay = await page.request.post('/api/v1/auth/refresh', {
       headers: { 'X-Requested-With': 'fetch', Cookie: `jp_refresh=${cookie!.value}` }
     });
     expect(replay.status()).toBe(401);
@@ -42,10 +42,10 @@ test.describe('sessions and access control', () => {
     }
 
     const token = await page.evaluate(async () => {
-      const res = await fetch('/api/auth/refresh', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } });
-      return ((await res.json()) as { token: string }).token;
+      const res = await fetch('/api/v1/auth/refresh', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } });
+      return ((await res.json()) as { data: { accessToken: string } }).data.accessToken;
     });
-    const forbidden = await page.request.get('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } });
+    const forbidden = await page.request.get('/api/v1/admin/users', { headers: { Authorization: `Bearer ${token}` } });
     expect(forbidden.status()).toBe(403);
   });
 
@@ -61,9 +61,9 @@ test.describe('sessions and access control', () => {
   test('the SPA fallback serves deep links and unknown API routes stay JSON 404s', async ({ page, request }) => {
     await page.goto('/jobs/000000000000000000000000');
     await expect(page.getByRole('alert')).toContainText('Job not found');
-    const api = await request.get('/api/nope');
+    const api = await request.get('/api/v1/nope');
     expect(api.status()).toBe(404);
-    expect((await api.json()).message).toMatch(/Route not found/);
+    expect((await api.json()).error.code).toBe('ROUTE_NOT_FOUND');
     expect(api.headers()['x-request-id']).toBeTruthy();
   });
 });

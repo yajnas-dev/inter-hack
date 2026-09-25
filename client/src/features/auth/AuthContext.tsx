@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { LoginBody, RegisterBody, UserDTO } from '@jobportal/shared';
-import { http, refreshSession, setAccessToken, setAuthLostHandler, type AuthResponse } from '../../shared/api/http';
+import type { AuthSessionDTO, LoginBody, RegisterBody, UserDTO } from '@jobportal/shared';
+import { http, refreshSession, setAccessToken, setAuthLostHandler } from '../../shared/api/http';
 
 type Status = 'loading' | 'authenticated' | 'anonymous';
 
@@ -55,8 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setAuthLostHandler(null);
   }, [clearSession]);
 
-  const start = useCallback((data: AuthResponse) => {
-    setAccessToken(data.token);
+  const start = useCallback((data: AuthSessionDTO) => {
+    setAccessToken(data.accessToken);
     setUser(data.user);
     setStatus('authenticated');
     return data.user;
@@ -66,8 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       user,
-      login: async (body) => start((await http.post<AuthResponse>('/auth/login', body)).data),
-      register: async (body) => start((await http.post<AuthResponse>('/auth/register', body)).data),
+      login: async (body) => start((await http.post<AuthSessionDTO>('/auth/login', body)).data),
+      register: async (body) => start((await http.post<AuthSessionDTO>('/auth/register', body)).data),
       logout: async () => {
         await http.post('/auth/logout').catch(() => undefined); // revokes the refresh token server-side
         clearSession();

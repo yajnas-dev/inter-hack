@@ -77,11 +77,11 @@ test('recruiter -> seeker -> recruiter -> admin journey', async ({ page }) => {
     await expect(page.getByRole('link', { name: /Applied: view status/ }).first()).toBeVisible();
 
     const status = await page.evaluate(async () => {
-      const auth = await fetch('/api/auth/refresh', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } });
-      const { token } = (await auth.json()) as { token: string };
-      const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-      const list = (await (await fetch('/api/jobs?title=Senior')).json()) as { jobs: Array<{ id: string }> };
-      const dup = await fetch('/api/applications', { method: 'POST', headers, body: JSON.stringify({ jobId: list.jobs[0]?.id }) });
+      const auth = await fetch('/api/v1/auth/refresh', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } });
+      const { data } = (await auth.json()) as { data: { accessToken: string } };
+      const headers = { Authorization: `Bearer ${data.accessToken}`, 'Content-Type': 'application/json' };
+      const list = (await (await fetch('/api/v1/jobs?title=Senior')).json()) as { data: Array<{ id: string }> };
+      const dup = await fetch('/api/v1/applications', { method: 'POST', headers, body: JSON.stringify({ jobId: list.data[0]?.id }) });
       return dup.status;
     });
     expect(status).toBe(409);

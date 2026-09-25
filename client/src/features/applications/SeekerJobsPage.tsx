@@ -11,6 +11,7 @@ import { ApplicationStepper } from '../../shared/ui/Stepper';
 import JobCard from '../jobs/JobCard';
 import { useSavedJobs, useSeekerJobState } from '../jobs/seekerState';
 import { useMyApplications } from './api';
+import { lastChange, NEXT_STEP, staleNote } from './nextStep';
 
 type Tab = 'all' | 'saved' | ApplicationStatus;
 
@@ -30,8 +31,10 @@ function ApplicationRow({ app }: { app: ApplicationDTO }) {
             {app.job.company.name} &middot; {app.job.location}
           </div>
           <ApplicationStepper status={app.status} />
+          <p className="next-step">{NEXT_STEP[app.status]}</p>
+          {staleNote(app) && <p className="next-step stale">{staleNote(app)}</p>}
           <div className="faint" style={{ fontSize: 'var(--text-xs)' }}>
-            Applied {formatDate(app.appliedAt)} ({timeAgo(app.appliedAt)})
+            Applied {formatDate(app.appliedAt)} &middot; last update {timeAgo(lastChange(app))}
           </div>
         </div>
       </div>
@@ -47,7 +50,8 @@ export default function SeekerJobsPage() {
   const saved = useSavedJobs(page, tab === 'saved');
   const state = useSeekerJobState();
 
-  const all = applications.data ?? [];
+  // Most recently changed first, so anything that moved is at the top.
+  const all = [...(applications.data ?? [])].sort((a, b) => new Date(lastChange(b)).getTime() - new Date(lastChange(a)).getTime());
   const count = (s: ApplicationStatus) => all.filter((a) => a.status === s).length;
   const tabs = [
     { value: 'all' as const, label: 'Applications', count: all.length },

@@ -18,6 +18,7 @@ interface FormValues {
   headline: string;
   phone: string;
   address: string;
+  totalExperienceYears: string;
   skills: string[];
   education: Array<{ degree: string; institution: string; fieldOfStudy: string; grade: string; startYear: string; endYear: string }>;
   experience: Array<{ title: string; company: string; description: string }>;
@@ -30,6 +31,7 @@ function toForm(p: SeekerProfileDTO): FormValues {
     headline: str(p.headline),
     phone: str(p.phone),
     address: str(p.address),
+    totalExperienceYears: str(p.totalExperienceYears),
     skills: p.skills,
     education: p.education.map((e) => ({
       degree: str(e.degree),
@@ -95,6 +97,8 @@ function ProfileForm({ profile }: { profile: SeekerProfileDTO }) {
         headline: v.headline,
         phone: v.phone,
         address: v.address,
+        // "" clears the value; the API validates the range (0-60).
+        totalExperienceYears: v.totalExperienceYears === '' ? null : Number(v.totalExperienceYears),
         skills: v.skills,
         education: v.education.map((e) => ({
           degree: e.degree,
@@ -121,6 +125,16 @@ function ProfileForm({ profile }: { profile: SeekerProfileDTO }) {
           <TextField label="Phone" type="tel" autoComplete="tel" {...register('phone')} />
           <TextField label="Location" autoComplete="address-level2" {...register('address')} />
         </div>
+        <TextField
+          label="Total years of experience"
+          type="number"
+          min={0}
+          max={60}
+          step={0.5}
+          inputMode="decimal"
+          hint="Used to match you with a job's experience requirement."
+          {...register('totalExperienceYears')}
+        />
       </section>
 
       <section className="card" id="skills" aria-labelledby="skills-title">

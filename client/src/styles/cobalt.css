@@ -749,3 +749,212 @@ dialog.dialog.bare .dialog-body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ---------- UX pass: search memory, skill match, density, shortcuts ---------- */
+.memory-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.memory-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.pill-match {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.tag-have {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.tag-missing {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px dashed var(--border-strong);
+}
+.match-box {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.split-list.dense .job-card {
+  padding: var(--space-3);
+}
+.split-list.dense .job-card .tags {
+  display: none;
+}
+.split-list.dense .job-card .foot {
+  margin-top: var(--space-2);
+}
+.is-stale {
+  opacity: 0.6;
+  transition: opacity var(--t-quiet);
+}
+.toast-action {
+  margin-left: var(--space-3);
+  font-weight: 600;
+  text-decoration: underline;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.shortcut-list {
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.shortcut-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+}
+.shortcut-row dt {
+  color: var(--text-2);
+}
+.shortcut-row dd {
+  margin: 0;
+  display: flex;
+  gap: 4px;
+}
+.next-step {
+  margin: var(--space-2) 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+.next-step.stale {
+  color: var(--warn);
+}
+.k-snippet {
+  margin: var(--space-2) 0 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.k-card.picked {
+  border-color: var(--brand);
+}
+.notes-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.notes-list li {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.preview-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 0 0 var(--space-2);
+}
+
+/* ---- AI match analysis ----------------------------------------------------------------------- */
+.match-panel {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.match-panel h3 {
+  font-size: 1rem;
+  gap: var(--space-2);
+}
+.match-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.match-score {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.score-ring {
+  --ring: var(--text-2);
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 4px solid var(--ring);
+  font-weight: 700;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+.score-ring.verdict-strong,
+.score-ring.verdict-good {
+  --ring: var(--success);
+}
+.score-ring.verdict-partial {
+  --ring: var(--warn);
+}
+.score-ring.verdict-weak {
+  --ring: var(--danger);
+}
+.match-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+.match-list h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+}
+.match-list ul {
+  margin: 0;
+  padding-left: 1.1em;
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+.match-list ul.tone-good li::marker {
+  color: var(--success);
+}
+.match-list ul.tone-gap li::marker {
+  color: var(--warn);
+}
+.match-warnings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  display: grid;
+  gap: var(--space-1);
+}
+.match-warnings li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.match-error {
+  margin: 0;
+  color: var(--danger);
+}

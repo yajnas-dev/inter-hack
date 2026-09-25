@@ -6,6 +6,7 @@ import { StatusPill, statusLabel } from '../../shared/ui/Chip';
 import { QueryBoundary } from '../../shared/ui/Feedback';
 import { ApplicationStepper } from '../../shared/ui/Stepper';
 import { useApplication } from './api';
+import { NEXT_STEP, staleNote } from './nextStep';
 
 export default function SeekerApplicationDetailPage() {
   const { id } = useParams();
@@ -31,6 +32,10 @@ export default function SeekerApplicationDetailPage() {
                 <StatusPill status={a.status} />
               </div>
               <ApplicationStepper status={a.status} reached={(a.statusHistory ?? []).map((h) => h.status)} />
+              <p className="next-step">{NEXT_STEP[a.status]}</p>
+              {staleNote({ ...a, stageSince: a.statusHistory?.at(-1)?.changedAt }) && (
+                <p className="next-step stale">{staleNote({ ...a, stageSince: a.statusHistory?.at(-1)?.changedAt })}</p>
+              )}
               <div className="row" style={{ marginTop: 8 }}>
                 <LinkButton to={`/jobs/${a.job.id}`} variant="secondary" size="sm">
                   View job

@@ -63,16 +63,16 @@ const JOBS = [
 
 const auth = async (request: APIRequestContext, name: string, role: 'JOB_SEEKER' | 'RECRUITER') => {
   const email = `${unique(name.split(' ')[0]?.toLowerCase() ?? 'u')}@example.com`;
-  const res = await request.post('/api/auth/register', { data: { name, email, password: PASSWORD, role } });
+  const res = await request.post('/api/v1/auth/register', { data: { name, email, password: PASSWORD, role } });
   expect(res.status()).toBe(201);
-  const { token } = (await res.json()) as { token: string };
-  return { email, name, headers: { Authorization: `Bearer ${token}` } };
+  const { data } = (await res.json()) as { data: { accessToken: string } };
+  return { email, name, headers: { Authorization: `Bearer ${data.accessToken}` } };
 };
 
 const uploadResume = async (request: APIRequestContext, headers: Record<string, string>) => {
-  const res = await request.post('/api/seekers/me/resume', {
+  const res = await request.post('/api/v1/resumes', {
     headers,
-    multipart: { resume: { name: 'resume.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fixture') } }
+    multipart: { file: { name: 'resume.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fixture') } }
   });
   expect(res.ok()).toBe(true);
 };
@@ -83,8 +83,8 @@ const uploadResume = async (request: APIRequestContext, headers: Record<string, 
  */
 export async function seedWorld(request: APIRequestContext): Promise<World> {
   const recruiter = await auth(request, 'Rita Recruiter', 'RECRUITER');
-  const company = (await (
-    await request.post('/api/companies', {
+  await (
+    await request.post('/api/v1/companies', {
       headers: recruiter.headers,
       data: {
         name: 'Northwind Labs',
@@ -94,14 +94,13 @@ export async function seedWorld(request: APIRequestContext): Promise<World> {
         description: 'We build reliable developer tools.'
       }
     })
-  ).json()) as { company: { id: string } };
+  ).json();
 
   const jobIds: string[] = [];
   for (const j of JOBS) {
-    const res = await request.post('/api/jobs', {
+    const res = await request.post('/api/v1/jobs', {
       headers: recruiter.headers,
       data: {
-        company: company.company.id,
         title: j.title,
         description: `${j.title} at Northwind Labs.\n\nYou will own features end to end, work with a small team, and ship weekly.`,
         location: j.location,
@@ -114,13 +113,13 @@ export async function seedWorld(request: APIRequestContext): Promise<World> {
       }
     });
     expect(res.status()).toBe(201);
-    jobIds.push(((await res.json()) as { job: { id: string } }).job.id);
+    jobIds.push(((await res.json()) as { data: { id: string } }).data.id);
   }
   const mainJobId = jobIds[0] as string;
 
   const applyAndMove = async (name: string, path: string[]) => {
     const person = await auth(request, name, 'JOB_SEEKER');
-    await request.put('/api/seekers/me', {
+    await request.patch('/api/v1/users/me/profile', {
       headers: person.headers,
       data: {
         headline: 'Software engineer',
@@ -129,14 +128,14 @@ export async function seedWorld(request: APIRequestContext): Promise<World> {
       }
     });
     await uploadResume(request, person.headers);
-    const applied = await request.post('/api/applications', {
+    const applied = await request.post('/api/v1/applications', {
       headers: person.headers,
       data: { jobId: mainJobId, coverNote: `Hello, I am ${name}.` }
     });
     expect(applied.status()).toBe(201);
-    const id = ((await applied.json()) as { application: { id: string } }).application.id;
+    const id = ((await applied.json()) as { data: { id: string } }).data.id;
     for (const status of path) {
-      const moved = await request.patch(`/api/applications/${id}/status`, { headers: recruiter.headers, data: { status } });
+      const moved = await request.patch(`/api/v1/applications/${id}`, { headers: recruiter.headers, data: { status } });
       expect(moved.ok()).toBe(true);
     }
     return person;
@@ -150,7 +149,7 @@ export async function seedWorld(request: APIRequestContext): Promise<World> {
   for (const name of pending) await applyAndMove(name, []);
 
   const sam = await auth(request, 'Sam Seeker', 'JOB_SEEKER');
-  await request.put('/api/seekers/me', {
+  await request.patch('/api/v1/users/me/profile', {
     headers: sam.headers,
     data: {
       headline: 'Full-stack developer',
@@ -161,7 +160,7 @@ export async function seedWorld(request: APIRequestContext): Promise<World> {
     }
   });
   await uploadResume(request, sam.headers);
-  await request.post('/api/applications', { headers: sam.headers, data: { jobId: jobIds[1] } });
+  await request.post('/api/v1/applications', { headers: sam.headers, data: { jobId: jobIds[1] } });
 
   return {
     recruiter: { name: recruiter.name, email: recruiter.email },

@@ -5,10 +5,12 @@ import { tokenize } from '../utils/tokenize';
 export interface JobAttrs {
   _id: Types.ObjectId;
   title: string;
+  /** Owning company. Authorisation to change the job is decided by this, not by who posted it. */
   company: Types.ObjectId;
-  /** Snapshot of the company's display fields so list endpoints need no populate. */
+  /** Snapshot of the company's display fields so list endpoints need no join; kept in sync on company edits. */
   companyName?: string;
   companyLogoUrl?: string;
+  /** The recruiter who created it (audit + notifications). */
   postedBy: Types.ObjectId;
   description: string;
   location: string;
@@ -29,17 +31,30 @@ export interface JobAttrs {
 
 const jobSchema = new Schema<JobAttrs>(
   {
-    title: { type: String, required: true, trim: true },
-    company: { type: Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    title: { type: String, required: true, trim: true, maxlength: 160 },
+    company: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
     companyName: String,
     companyLogoUrl: String,
     postedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    description: { type: String, required: true },
-    location: { type: String, required: true, trim: true },
+    description: { type: String, required: true, maxlength: 10_000 },
+    location: { type: String, required: true, trim: true, maxlength: 160 },
     salaryMin: { type: Number, required: true, min: 0 },
-    salaryMax: { type: Number, required: true, min: 0 },
-    requiredSkills: [{ type: String, trim: true }],
-    experienceRequired: { type: Number, required: true, min: 0 },
+    salaryMax: {
+      type: Number,
+      required: true,
+      min: 0,
+      validate: {
+        validator(this: JobAttrs, v: number) {
+          return typeof this.salaryMin !== 'number' || v >= this.salaryMin;
+        },
+        message: 'salaryMax must be greater than or equal to salaryMin'
+      }
+    },
+    requiredSkills: {
+      type: [{ type: String, trim: true, maxlength: 60 }],
+      validate: [(v: string[]) => v.length <= 30, 'At most 30 skills']
+    },
+    experienceRequired: { type: Number, required: true, min: 0, max: 60 },
     employmentType: { type: String, enum: EMPLOYMENT_TYPES, required: true },
     status: { type: String, enum: JOB_STATUSES, default: 'OPEN' },
     vacancies: { type: Number, default: 1, min: 1 },
@@ -68,15 +83,19 @@ jobSchema.pre('validate', function syncMirrors(next) {
   next();
 });
 
-// Every listing sorts newest-first with _id as tie-breaker (keyset pagination), so each index ends in
-// createdAt/_id and Mongo returns rows already ordered: no in-memory SORT stage.
+// Public search always filters status=OPEN and orders by (createdAt|salaryMax, _id), so each index starts with
+// status and ends with the sort key + _id: rows come back already ordered (no in-memory SORT stage).
 jobSchema.index({ status: 1, createdAt: -1, _id: -1 });
+jobSchema.index({ status: 1, salaryMax: -1, _id: -1 });
 jobSchema.index({ status: 1, employmentType: 1, createdAt: -1, _id: -1 });
 jobSchema.index({ status: 1, employmentType: 1, experienceRequired: 1, locationLower: 1 });
 jobSchema.index({ status: 1, requiredSkillsLower: 1, createdAt: -1, _id: -1 });
 jobSchema.index({ status: 1, titleTokens: 1, createdAt: -1, _id: -1 });
-jobSchema.index({ postedBy: 1, createdAt: -1, _id: -1 });
 jobSchema.index({ status: 1, company: 1, createdAt: -1, _id: -1 });
-jobSchema.index({ status: 1, salaryMax: -1, _id: -1 });
+// A company's own jobs (recruiter dashboard, all statuses) and admin cascades.
+jobSchema.index({ company: 1, createdAt: -1, _id: -1 });
+jobSchema.index({ postedBy: 1 });
+// Admin table.
+jobSchema.index({ createdAt: -1, _id: -1 });
 
 export const Job = model<JobAttrs>('Job', jobSchema);

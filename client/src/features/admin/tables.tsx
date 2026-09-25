@@ -110,7 +110,7 @@ export function UsersPage() {
     >
       <QueryBoundary query={users}>
         {(data) => {
-          const columns: Column<(typeof data.users)[number]>[] = [
+          const columns: Column<(typeof data.items)[number]>[] = [
             {
               key: 'name',
               header: 'Name',
@@ -173,13 +173,13 @@ export function UsersPage() {
           return (
             <>
               <DataTable
-                rows={data.users}
+                rows={data.items}
                 columns={columns}
                 rowKey={(u) => u.id}
                 filterLabel="Filter users on this page"
                 empty="No users"
               />
-              <Pager page={data.page} limit={data.limit} total={data.total} onPage={setPage} />
+              <Pager page={data.meta.page ?? 1} limit={data.meta.limit} total={data.meta.total ?? 0} onPage={setPage} />
             </>
           );
         }}
@@ -199,7 +199,7 @@ export function CompaniesPage() {
     <Page title="Companies" subtitle="Company profiles created by recruiters.">
       <QueryBoundary query={companies}>
         {(data) => {
-          const columns: Column<(typeof data.companies)[number]>[] = [
+          const columns: Column<(typeof data.items)[number]>[] = [
             {
               key: 'name',
               header: 'Company',
@@ -234,13 +234,13 @@ export function CompaniesPage() {
           return (
             <>
               <DataTable
-                rows={data.companies}
+                rows={data.items}
                 columns={columns}
                 rowKey={(c) => c.id}
                 filterLabel="Filter companies on this page"
                 empty="No companies"
               />
-              <Pager page={data.page} limit={data.limit} total={data.total} onPage={setPage} />
+              <Pager page={data.meta.page ?? 1} limit={data.meta.limit} total={data.meta.total ?? 0} onPage={setPage} />
             </>
           );
         }}
@@ -253,17 +253,18 @@ export function CompaniesPage() {
 export function JobsPage() {
   const [page, setPage] = useState(1);
   const jobs = useAdminJobs(page);
-  const { deleteJob } = useAdminMutations();
+  const { deleteJob, setJobStatus } = useAdminMutations();
   const { ask, dialog } = useConfirm();
 
   return (
     <Page title="Jobs" subtitle="All postings, open and closed.">
       <QueryBoundary query={jobs}>
         {(data) => {
-          const columns: Column<(typeof data.jobs)[number]>[] = [
+          const columns: Column<(typeof data.items)[number]>[] = [
             { key: 'title', header: 'Title', value: (j) => j.title, render: (j) => <strong>{j.title}</strong> },
             { key: 'company', header: 'Company', value: (j) => j.company.name ?? '', render: (j) => j.company.name },
             { key: 'postedBy', header: 'Posted by', value: (j) => j.postedBy?.name ?? '', render: (j) => j.postedBy?.name },
+            { key: 'applicants', header: 'Applicants', value: (j) => j.applicantCount, render: (j) => j.applicantCount },
             {
               key: 'status',
               header: 'Status',
@@ -274,29 +275,50 @@ export function JobsPage() {
               key: 'actions',
               header: 'Actions',
               render: (j) => (
-                <Button
-                  size="sm"
-                  variant="danger-outline"
-                  aria-label={`Delete ${j.title}`}
-                  onClick={() =>
-                    ask({
-                      title: 'Delete job?',
-                      message: `"${j.title}" and all of its applications will be permanently deleted.`,
-                      confirmLabel: 'Delete',
-                      run: () => deleteJob.mutateAsync(j.id),
-                      done: 'Job deleted.'
-                    })
-                  }
-                >
-                  Delete
-                </Button>
+                <span className="row">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    aria-label={`${j.status === 'OPEN' ? 'Close' : 'Reopen'} ${j.title}`}
+                    onClick={() =>
+                      ask({
+                        title: j.status === 'OPEN' ? 'Close job?' : 'Reopen job?',
+                        message:
+                          j.status === 'OPEN'
+                            ? `"${j.title}" will stop accepting applications and disappear from search.`
+                            : `"${j.title}" will accept applications again.`,
+                        confirmLabel: j.status === 'OPEN' ? 'Close' : 'Reopen',
+                        run: () => setJobStatus.mutateAsync({ id: j.id, status: j.status === 'OPEN' ? 'CLOSED' : 'OPEN' }),
+                        done: j.status === 'OPEN' ? 'Job closed.' : 'Job reopened.'
+                      })
+                    }
+                  >
+                    {j.status === 'OPEN' ? 'Close' : 'Reopen'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger-outline"
+                    aria-label={`Delete ${j.title}`}
+                    onClick={() =>
+                      ask({
+                        title: 'Delete job?',
+                        message: `"${j.title}" and all of its applications will be permanently deleted.`,
+                        confirmLabel: 'Delete',
+                        run: () => deleteJob.mutateAsync(j.id),
+                        done: 'Job deleted.'
+                      })
+                    }
+                  >
+                    Delete
+                  </Button>
+                </span>
               )
             }
           ];
           return (
             <>
-              <DataTable rows={data.jobs} columns={columns} rowKey={(j) => j.id} filterLabel="Filter jobs on this page" empty="No jobs" />
-              <Pager page={data.page} limit={data.limit} total={data.total} onPage={setPage} />
+              <DataTable rows={data.items} columns={columns} rowKey={(j) => j.id} filterLabel="Filter jobs on this page" empty="No jobs" />
+              <Pager page={data.meta.page ?? 1} limit={data.meta.limit} total={data.meta.total ?? 0} onPage={setPage} />
             </>
           );
         }}
@@ -314,7 +336,7 @@ export function ApplicationsPage() {
     <Page title="Applications" subtitle="Every application across the platform (read only).">
       <QueryBoundary query={applications}>
         {(data) => {
-          const columns: Column<(typeof data.applications)[number]>[] = [
+          const columns: Column<(typeof data.items)[number]>[] = [
             {
               key: 'applicant',
               header: 'Applicant',
@@ -334,13 +356,13 @@ export function ApplicationsPage() {
           return (
             <>
               <DataTable
-                rows={data.applications}
+                rows={data.items}
                 columns={columns}
                 rowKey={(a) => a.id}
                 filterLabel="Filter applications on this page"
                 empty="No applications"
               />
-              <Pager page={data.page} limit={data.limit} total={data.total} onPage={setPage} />
+              <Pager page={data.meta.page ?? 1} limit={data.meta.limit} total={data.meta.total ?? 0} onPage={setPage} />
             </>
           );
         }}

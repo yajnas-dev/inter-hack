@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { NotificationsDTO } from '@jobportal/shared';
+import type { NotificationDTO } from '@jobportal/shared';
 import { http } from '../../shared/api/http';
 import { useAuth } from '../auth/AuthContext';
 
@@ -26,14 +26,17 @@ export function useNotifications(enabled = true) {
   return useQuery({
     queryKey: notificationKeys.list,
     enabled,
-    queryFn: async () => (await http.get<NotificationsDTO>('/notifications', { params: { limit: 30 } })).data
+    queryFn: async () => {
+      const res = await http.get<NotificationDTO[]>('/notifications', { params: { limit: 30 } });
+      return { items: res.data, unread: Number(res.meta?.unread ?? 0) };
+    }
   });
 }
 
 export function useMarkRead() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { ids?: string[]; all?: boolean }) => (await http.post<{ unread: number }>('/notifications/read', body)).data,
+    mutationFn: async (body: { ids: string[] } | { all: true }) => (await http.patch<{ unread: number }>('/notifications', body)).data,
     onSuccess: (data) => {
       queryClient.setQueryData(notificationKeys.unread, data.unread);
       void queryClient.invalidateQueries({ queryKey: notificationKeys.list });

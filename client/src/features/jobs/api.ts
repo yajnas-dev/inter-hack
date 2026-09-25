@@ -1,14 +1,15 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   EmploymentType,
   JobCreateBody,
   JobDetailDTO,
   JobFacetsDTO,
-  JobListDTO,
   JobListItemDTO,
-  JobUpdateBody
+  JobUpdateBody,
+  ManagedJobDTO,
+  MatchAnalysisDTO
 } from '@jobportal/shared';
-import { http } from '../../shared/api/http';
+import { getPage, http, type Page } from '../../shared/api/http';
 
 export interface JobFilters {
   title: string;
@@ -46,7 +47,7 @@ export function filterParams(f: JobFilters): Record<string, string> {
     postedWithin: f.postedWithin,
     minSalary: f.minSalary,
     company: f.company,
-    sort: f.sort === 'newest' ? '' : f.sort
+    sort: f.sort === 'salary' ? '-salaryMax' : ''
   };
   return Object.fromEntries(Object.entries(params).filter(([, v]) => v !== ''));
 }
@@ -60,48 +61,36 @@ export const jobKeys = {
   mine: ['jobs', 'mine'] as const
 };
 
-type Page = { cursor?: string; page?: number };
-
 /**
- * Newest-first pages with an opaque cursor (O(1) at any depth); highest-salary order pages by number
- * because a keyset over salary is not stable enough to be worth the complexity.
+ * Keyset-cursor paging for every ordering: each page's `meta.nextCursor` fetches the next one, O(1) at any
+ * depth. The first page also carries the total.
  */
 export function useJobSearch(filters: JobFilters) {
   return useInfiniteQuery({
     queryKey: jobKeys.search(filters),
-    initialPageParam: {} as Page,
-    queryFn: async ({ pageParam }) =>
-      (
-        await http.get<JobListDTO>('/jobs', {
-          params: { ...filterParams(filters), limit: 20, cursor: pageParam.cursor, page: pageParam.page }
-        })
-      ).data,
-    getNextPageParam: (last): Page | undefined => {
-      if (last.nextCursor) return { cursor: last.nextCursor };
-      if (filters.sort === 'salary' && last.page && last.total !== undefined && last.page * last.limit < last.total)
-        return { page: last.page + 1 };
-      return undefined;
-    },
-    staleTime: 15_000
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => getPage<JobListItemDTO>('/jobs', { ...filterParams(filters), limit: 20, cursor: pageParam }),
+    getNextPageParam: (last: Page<JobListItemDTO>) => last.meta.nextCursor ?? undefined,
+    staleTime: 15_000,
+    placeholderData: keepPreviousData
   });
+}
+
+const fetchJob = async (id: string) => (await http.get<JobDetailDTO>(`/jobs/${id}`)).data;
+const fetchSimilar = async (id: string) => (await http.get<JobListItemDTO[]>(`/jobs/${id}/similar`)).data;
+
+/** Warm the cache for a job the user is about to open (hover/focus on its card). */
+export function prefetchJob(queryClient: QueryClient, id: string): void {
+  void queryClient.prefetchQuery({ queryKey: jobKeys.detail(id), queryFn: () => fetchJob(id), staleTime: 15_000 });
+  void queryClient.prefetchQuery({ queryKey: jobKeys.similar(id), queryFn: () => fetchSimilar(id), staleTime: 60_000 });
 }
 
 export function useJob(id: string | undefined) {
-  return useQuery({
-    queryKey: jobKeys.detail(id ?? ''),
-    enabled: Boolean(id),
-    queryFn: async () => (await http.get<{ job: JobDetailDTO }>(`/jobs/${id}`)).data.job,
-    staleTime: 15_000
-  });
+  return useQuery({ queryKey: jobKeys.detail(id ?? ''), enabled: Boolean(id), queryFn: () => fetchJob(id!), staleTime: 15_000 });
 }
 
 export function useSimilarJobs(id: string | undefined) {
-  return useQuery({
-    queryKey: jobKeys.similar(id ?? ''),
-    enabled: Boolean(id),
-    queryFn: async () => (await http.get<{ jobs: JobListItemDTO[] }>(`/jobs/${id}/similar`)).data.jobs,
-    staleTime: 60_000
-  });
+  return useQuery({ queryKey: jobKeys.similar(id ?? ''), enabled: Boolean(id), queryFn: () => fetchSimilar(id!), staleTime: 60_000 });
 }
 
 export function useFacets() {
@@ -112,24 +101,32 @@ export function useFacets() {
   });
 }
 
+/** The recruiter's company jobs (all statuses) with applicant counts. */
 export function useMyJobs() {
-  return useQuery({
-    queryKey: jobKeys.mine,
-    queryFn: async () => (await http.get<{ jobs: JobListItemDTO[]; total: number }>('/jobs/mine')).data
-  });
+  return useQuery({ queryKey: jobKeys.mine, queryFn: () => getPage<ManagedJobDTO>('/users/me/jobs', { limit: 100 }) });
 }
 
 export function useJobMutations() {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: jobKeys.all });
+  const setStatus = async (id: string, status: 'OPEN' | 'CLOSED') => (await http.patch<ManagedJobDTO>(`/jobs/${id}`, { status })).data;
 
   return {
-    create: useMutation({ mutationFn: async (body: JobCreateBody) => (await http.post('/jobs', body)).data, onSuccess: invalidate }),
-    update: useMutation({
-      mutationFn: async ({ id, body }: { id: string; body: JobUpdateBody }) => (await http.put(`/jobs/${id}`, body)).data,
+    create: useMutation({
+      mutationFn: async (body: JobCreateBody) => (await http.post<ManagedJobDTO>('/jobs', body)).data,
       onSuccess: invalidate
     }),
-    close: useMutation({ mutationFn: async (id: string) => (await http.patch(`/jobs/${id}/close`)).data, onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: async ({ id, body }: { id: string; body: JobUpdateBody }) => (await http.patch<ManagedJobDTO>(`/jobs/${id}`, body)).data,
+      onSuccess: invalidate
+    }),
+    close: useMutation({ mutationFn: (id: string) => setStatus(id, 'CLOSED'), onSuccess: invalidate }),
+    reopen: useMutation({ mutationFn: (id: string) => setStatus(id, 'OPEN'), onSuccess: invalidate }),
     remove: useMutation({ mutationFn: async (id: string) => (await http.delete(`/jobs/${id}`)).data, onSuccess: invalidate })
   };
+}
+
+/** AI (or rule-based fallback) analysis of the signed-in seeker's fit for a job. */
+export function useJobMatch(jobId: string) {
+  return useMutation({ mutationFn: async () => (await http.post<MatchAnalysisDTO>(`/jobs/${jobId}/match`)).data });
 }

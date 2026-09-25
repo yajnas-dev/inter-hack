@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
@@ -19,6 +19,34 @@ export function useDebouncedValue<T>(value: T, delayMs = 300): T {
     return () => window.clearTimeout(timer);
   }, [value, delayMs]);
   return debounced;
+}
+
+/** useState that survives reloads (localStorage). Storage failures fall back to plain in-memory state. */
+export function usePersistedState<T>(key: string, initial: T): [T, (next: T | ((prev: T) => T)) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw === null ? initial : (JSON.parse(raw) as T);
+    } catch {
+      return initial;
+    }
+  });
+  // Stable identity, so effects and callbacks that depend on the setter do not re-run on every render.
+  const set = useCallback(
+    (next: T | ((prev: T) => T)) =>
+      setValue((prev) => {
+        const resolved = typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
+        if (resolved === prev) return prev;
+        try {
+          localStorage.setItem(key, JSON.stringify(resolved));
+        } catch {
+          /* storage unavailable: keep the value for this session */
+        }
+        return resolved;
+      }),
+    [key]
+  );
+  return [value, set];
 }
 
 export type ThemePreference = 'system' | 'light' | 'dark';

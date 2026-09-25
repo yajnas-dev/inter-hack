@@ -1,193 +1,174 @@
 import type { ClientSession, Types } from 'mongoose';
-import type { AdminSummaryDTO, Role } from '@jobportal/shared';
-import { env } from '../../config/env';
+import type {
+  AdminApplicationListQuery,
+  AdminCompanyDTO,
+  AdminCompanyListQuery,
+  AdminJobListQuery,
+  AdminUserListQuery,
+  ApplicationDTO,
+  JobStatus,
+  ManagedJobDTO,
+  UserDTO
+} from '@jobportal/shared';
 import { withTransaction } from '../../infra/db';
 import { events } from '../../infra/events';
-import { createSwrCache } from '../../infra/cache/swr';
-import { deleteResumeFileIfUnreferenced } from '../../infra/gridfs';
-import { badRequest, notFound } from '../../http/errors';
-import { Application, Company, Job, JobSeekerProfile, Notification, RecruiterProfile, RefreshToken, SavedJob, User } from '../../models';
-import { presentApplication, toUserDTO } from '../../utils/presenters';
-import { withId } from '../../utils/serialize';
+import { logger } from '../../infra/logger';
+import { AuthorizationError, NotFoundError } from '../../http/errors';
+import { forgetRecruiterCompany } from '../../policies/access';
+import * as applications from '../../repositories/application.repository';
+import * as companies from '../../repositories/company.repository';
+import * as jobs from '../../repositories/job.repository';
+import * as matches from '../../repositories/match.repository';
+import * as notifications from '../../repositories/notification.repository';
+import * as profiles from '../../repositories/profile.repository';
+import * as resumesRepo from '../../repositories/resume.repository';
+import * as saved from '../../repositories/savedJob.repository';
+import * as sessions from '../../repositories/session.repository';
+import * as users from '../../repositories/user.repository';
+import { offsetMeta, type Paged } from '../../utils/pagination';
+import { presentAdminCompany, presentApplication, presentManagedJob, presentUser } from '../../utils/presenters';
 import { revokeAllSessions } from '../auth/auth.service';
+import { clearReportCache } from '../reports/reports.service';
+import { deleteResumesIfOrphaned, deleteAllResumesOf } from '../resumes/resumes.cleanup';
 
-// 60s report cache: concurrent misses share one computation and stale values are served while refreshing.
-const reports = createSwrCache<unknown>(env.isTest ? 0 : 60 * 1000, 20);
-const skipOf = (page: number, limit: number) => (page - 1) * limit;
+type User = Express.AuthUser;
 
-// ---- cascade helpers (Mongo has no foreign keys); each takes the surrounding session ----------
-
-async function deleteJobsCascade(filter: Record<string, unknown>, session: ClientSession | undefined): Promise<void> {
-  const jobIds = await Job.find(filter)
-    .session(session ?? null)
-    .distinct('_id');
-  await Application.deleteMany({ job: { $in: jobIds } }, { session });
-  await SavedJob.deleteMany({ job: { $in: jobIds } }, { session });
-  await Job.deleteMany({ _id: { $in: jobIds } }, { session });
+/**
+ * MongoDB has no foreign keys, so every cascade is explicit and runs in one transaction (on a replica set).
+ * Resume BYTES live in GridFS, outside the transaction, and are removed only after it commits.
+ */
+async function deleteJobsCascade(jobIds: Types.ObjectId[], session: ClientSession | undefined): Promise<void> {
+  if (!jobIds.length) return;
+  await applications.deleteForJobs(jobIds, session);
+  await saved.deleteForJobs(jobIds, session);
+  await jobs.deleteByIds(jobIds, session);
 }
 
-async function deleteCompanyCascade(companyId: Types.ObjectId, session: ClientSession | undefined): Promise<void> {
-  await deleteJobsCascade({ company: companyId }, session);
-  await RecruiterProfile.updateMany({ company: companyId }, { $unset: { company: 1 } }, { session });
-  await Company.deleteOne({ _id: companyId }, { session });
-}
-
-const afterDelete = () => {
-  reports.clear();
+function afterChange(): void {
+  clearReportCache();
   events.emit('jobs.changed', {});
-};
+}
 
 // ---- users -----------------------------------------------------------------------------------
 
-export async function listUsers(role: Role | undefined, page: number, limit: number) {
-  const filter = role ? { role } : {};
-  const [users, total] = await Promise.all([
-    User.find(filter).sort({ createdAt: -1 }).skip(skipOf(page, limit)).limit(limit).lean(),
-    User.countDocuments(filter)
-  ]);
-  return { users: users.map(toUserDTO), total, page, limit };
+export async function listUsers(query: AdminUserListQuery): Promise<Paged<UserDTO>> {
+  const [rows, total] = await users.list(query);
+  return { items: rows.map(presentUser), meta: offsetMeta(query, total) };
 }
 
-export async function setUserActive(id: string, isActive: boolean) {
-  const user = await User.findByIdAndUpdate(id, { isActive }, { new: true }).lean();
-  if (!user) throw notFound('User not found');
+export async function getUser(id: string): Promise<UserDTO> {
+  const user = await users.findById(id);
+  if (!user) throw new NotFoundError('User');
+  return presentUser(user);
+}
+
+/** Deactivating signs the user out everywhere immediately (refresh tokens revoked, access tokens rejected). */
+export async function setUserActive(actor: User, id: string, isActive: boolean): Promise<UserDTO> {
+  if (id === actor.id) throw new AuthorizationError('Administrators cannot deactivate their own account');
+  const user = await users.update(id, { isActive });
+  if (!user) throw new NotFoundError('User');
   if (!isActive) await revokeAllSessions(id);
-  return toUserDTO(user);
+  logger.info({ admin: actor.id, userId: id, isActive }, 'admin changed account state');
+  clearReportCache();
+  return presentUser(user);
 }
 
-export async function deleteUser(id: string, actingAdminId: string): Promise<void> {
-  if (id === actingAdminId) throw badRequest('You cannot delete your own account');
-  const user = await User.findById(id).select('_id').lean();
-  if (!user) throw notFound('User not found');
-  const profile = await JobSeekerProfile.findOne({ user: user._id }).select('resume').lean();
+export async function deleteUser(actor: User, id: string): Promise<void> {
+  if (id === actor.id) throw new AuthorizationError('Administrators cannot delete their own account');
+  const user = await users.findById(id);
+  if (!user) throw new NotFoundError('User');
 
+  const companyIds = await companies.idsCreatedBy(user._id);
+  const jobIds = await jobs.idsWhere({ $or: [{ company: { $in: companyIds } }, { postedBy: user._id }] });
+  const touchedResumes = [...(await applications.resumeIdsForApplicant(user._id)), ...(await applications.resumeIdsForJobs(jobIds))];
   await withTransaction(async (session) => {
-    await deleteJobsCascade({ postedBy: user._id }, session);
-    const companyIds = await Company.find({ createdBy: user._id })
-      .session(session ?? null)
-      .distinct('_id');
-    for (const companyId of companyIds) await deleteCompanyCascade(companyId, session);
-    await Application.deleteMany({ applicant: user._id }, { session });
+    await deleteJobsCascade(jobIds, session);
+    for (const companyId of companyIds) {
+      await profiles.unsetCompany(companyId, session);
+      await companies.deleteById(companyId, session);
+    }
+    await applications.deleteForApplicant(user._id, session);
     await Promise.all([
-      JobSeekerProfile.deleteOne({ user: user._id }, { session }),
-      RecruiterProfile.deleteOne({ user: user._id }, { session }),
-      RefreshToken.deleteMany({ user: user._id }, { session }),
-      SavedJob.deleteMany({ user: user._id }, { session }),
-      Notification.deleteMany({ user: user._id }, { session }),
-      User.deleteOne({ _id: user._id }, { session })
+      profiles.deleteForUser(user._id, session),
+      sessions.deleteAllForUser(user._id, session),
+      saved.deleteForUser(user._id, session),
+      notifications.deleteForUser(user._id, session),
+      users.deleteById(id, session)
     ]);
   });
 
-  await deleteResumeFileIfUnreferenced(profile?.resume?.fileId);
-  events.emit('user.deactivated', { userId: id });
-  afterDelete();
+  await deleteAllResumesOf(user._id);
+  await deleteResumesIfOrphaned(touchedResumes);
+  await matches.deleteForCandidate(user._id);
+  await matches.deleteForJobs(jobIds);
+  forgetRecruiterCompany(id);
+  events.emit('user.sessionsRevoked', { userId: id });
+  logger.info({ admin: actor.id, userId: id }, 'admin deleted user');
+  afterChange();
 }
 
-// ---- companies / jobs / applications ----------------------------------------------------------
+// ---- companies -------------------------------------------------------------------------------
 
-export async function listCompanies(page: number, limit: number) {
-  const [companies, total] = await Promise.all([
-    Company.find().sort({ createdAt: -1 }).skip(skipOf(page, limit)).limit(limit).lean(),
-    Company.estimatedDocumentCount()
-  ]);
-  return { companies: withId(companies), total, page, limit };
+export async function listCompanies(query: AdminCompanyListQuery): Promise<Paged<AdminCompanyDTO>> {
+  const [rows, total] = await companies.list(query);
+  return { items: rows.map(presentAdminCompany), meta: offsetMeta(query, total) };
 }
 
-export async function deleteCompany(id: string): Promise<void> {
-  const company = await Company.findById(id).select('_id').lean();
-  if (!company) throw notFound('Company not found');
-  await withTransaction((session) => deleteCompanyCascade(company._id, session));
-  afterDelete();
+export async function deleteCompany(actor: User, id: string): Promise<void> {
+  const company = await companies.findById(id);
+  if (!company) throw new NotFoundError('Company');
+  const jobIds = await jobs.idsWhere({ company: company._id });
+  const touchedResumes = await applications.resumeIdsForJobs(jobIds);
+  await withTransaction(async (session) => {
+    await deleteJobsCascade(jobIds, session);
+    await profiles.unsetCompany(company._id, session);
+    await companies.deleteById(company._id, session);
+  });
+  await deleteResumesIfOrphaned(touchedResumes);
+  await matches.deleteForJobs(jobIds);
+  forgetRecruiterCompany(String(company.createdBy));
+  logger.info({ admin: actor.id, companyId: id, jobs: jobIds.length }, 'admin deleted company');
+  afterChange();
 }
 
-export async function listAllJobs(page: number, limit: number) {
-  const [jobs, total] = await Promise.all([
-    Job.find()
-      .select('-description')
-      .sort({ createdAt: -1 })
-      .skip(skipOf(page, limit))
-      .limit(limit)
-      .populate('postedBy', 'name email')
-      .lean(),
-    Job.estimatedDocumentCount()
-  ]);
-  const shaped = jobs.map(({ companyName, companyLogoUrl: _logo, ...j }) => ({ ...j, company: { _id: j.company, name: companyName } }));
-  return { jobs: withId(shaped), total, page, limit };
+// ---- jobs ------------------------------------------------------------------------------------
+
+export async function listJobs(query: AdminJobListQuery): Promise<Paged<ManagedJobDTO>> {
+  const { rows, total } = await jobs.listAll(query);
+  return { items: rows.map(presentManagedJob), meta: offsetMeta(query, total) };
 }
 
-export async function deleteAnyJob(id: string): Promise<void> {
-  const job = await Job.findById(id).select('_id').lean();
-  if (!job) throw notFound('Job not found');
-  await withTransaction((session) => deleteJobsCascade({ _id: job._id }, session));
-  afterDelete();
+/** Moderation: close (or reopen) any job. */
+export async function setJobStatus(actor: User, id: string, status: JobStatus): Promise<ManagedJobDTO> {
+  const job = await jobs.setStatus(id, status);
+  if (!job) throw new NotFoundError('Job');
+  logger.info({ admin: actor.id, jobId: id, status }, 'admin changed job status');
+  afterChange();
+  return presentManagedJob({ ...job, applicantCount: await applications.countForJob(job._id) });
 }
 
-export async function listAllApplications(page: number, limit: number) {
-  const [rows, total] = await Promise.all([
-    Application.find().select('-resumeSnapshot -statusHistory').sort({ appliedAt: -1 }).skip(skipOf(page, limit)).limit(limit).lean(),
-    Application.estimatedDocumentCount()
-  ]);
-  return { applications: rows.map((a) => presentApplication(a)), total, page, limit };
+/** Unlike recruiters, admins may delete a job that has applications (e.g. fraudulent postings). */
+export async function deleteJob(actor: User, id: string): Promise<void> {
+  const job = await jobs.findById(id);
+  if (!job) throw new NotFoundError('Job');
+  const touchedResumes = await applications.resumeIdsForJobs([job._id]);
+  await withTransaction((session) => deleteJobsCascade([job._id], session));
+  await deleteResumesIfOrphaned(touchedResumes);
+  await matches.deleteForJobs([job._id]);
+  logger.info({ admin: actor.id, jobId: id }, 'admin deleted job');
+  afterChange();
 }
 
-// ---- reports (FR-08) --------------------------------------------------------------------------
+// ---- applications ----------------------------------------------------------------------------
 
-export const summary = (): Promise<AdminSummaryDTO> =>
-  reports.get('summary', async () => {
-    const [users, jobs, totalApplications] = await Promise.all([
-      User.aggregate<{ _id: Role; count: number }>([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
-      Job.aggregate<{ _id: string; count: number }>([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Application.estimatedDocumentCount()
-    ]);
-    const countOf = (rows: Array<{ _id: string; count: number }>, key: string) => rows.find((r) => r._id === key)?.count ?? 0;
-    const sum = (rows: Array<{ count: number }>) => rows.reduce((total, r) => total + r.count, 0);
-    return {
-      totalUsers: sum(users),
-      totalSeekers: countOf(users, 'JOB_SEEKER'),
-      totalRecruiters: countOf(users, 'RECRUITER'),
-      totalJobs: sum(jobs),
-      totalJobsOpen: countOf(jobs, 'OPEN'),
-      totalJobsClosed: countOf(jobs, 'CLOSED'),
-      totalApplications
-    } satisfies AdminSummaryDTO;
-  }) as Promise<AdminSummaryDTO>;
-
-const report = (key: string, run: () => Promise<unknown[]>) => async () => ({ results: await reports.get(key, run) });
-
-export const applicationsByStatus = report('byStatus', () =>
-  Application.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }, { $project: { _id: 0, status: '$_id', count: 1 } }])
-);
-
-export const applicationsOverTime = report('overTime', () =>
-  Application.aggregate([
-    { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$appliedAt' } }, count: { $sum: 1 } } },
-    { $project: { _id: 0, date: '$_id', count: 1 } },
-    { $sort: { date: 1 } }
-  ])
-);
-
-// $limit runs before $lookup so only the top rows are joined.
-export const topJobs = report('topJobs', () =>
-  Application.aggregate([
-    { $group: { _id: '$job', applicantCount: { $sum: 1 } } },
-    { $sort: { applicantCount: -1 } },
-    { $limit: 10 },
-    { $lookup: { from: 'jobs', localField: '_id', foreignField: '_id', as: 'job' } },
-    { $unwind: '$job' },
-    { $lookup: { from: 'companies', localField: 'job.company', foreignField: '_id', as: 'company' } },
-    { $unwind: '$company' },
-    { $project: { _id: 0, jobId: { $toString: '$job._id' }, title: '$job.title', company: '$company.name', applicantCount: 1 } }
-  ])
-);
-
-// Applications carry their company, so this is one grouping stage plus a 10-row lookup.
-export const topCompanies = report('topCompanies', () =>
-  Application.aggregate([
-    { $group: { _id: '$company', applicantCount: { $sum: 1 } } },
-    { $sort: { applicantCount: -1 } },
-    { $limit: 10 },
-    { $lookup: { from: 'companies', localField: '_id', foreignField: '_id', as: 'company' } },
-    { $unwind: '$company' },
-    { $project: { _id: 0, companyId: { $toString: '$company._id' }, name: '$company.name', applicantCount: 1 } }
-  ])
-);
+export async function listApplications(query: AdminApplicationListQuery): Promise<Paged<ApplicationDTO>> {
+  const filter = {
+    ...(query.status && { status: query.status }),
+    ...(query.jobId && { job: query.jobId }),
+    ...(query.company && { company: query.company })
+  };
+  const [rows, total] = await applications.list(filter, query);
+  const ids = rows.map((r) => r.resume).filter((r): r is Types.ObjectId => Boolean(r));
+  const resumeMap = new Map((await resumesRepo.findManyByIds(ids)).map((r) => [String(r._id), r]));
+  return { items: rows.map((a) => presentApplication(a, { reviewer: true, resumes: resumeMap })), meta: offsetMeta(query, total) };
+}

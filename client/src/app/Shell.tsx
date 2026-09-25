@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import type { Role } from '@jobportal/shared';
 import NotificationBell from '../features/notifications/NotificationBell';
 import { useAuth } from '../features/auth/AuthContext';
+import { useSearchMemory } from '../features/jobs/searchMemory';
 import { type ThemePreference, useTheme } from '../shared/lib/hooks';
 import { Avatar } from '../shared/ui/Avatar';
 import { IconButton, LinkButton } from '../shared/ui/Button';
@@ -150,6 +151,7 @@ export function Header() {
   const { user, status } = useAuth();
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState(false);
+  const memory = useSearchMemory();
   const items = user ? NAV[user.role] : GUEST;
   const pathname = useLocation().pathname;
 
@@ -210,7 +212,17 @@ export function Header() {
         </div>
       </div>
 
-      <CommandPalette open={palette} onClose={() => setPalette(false)} pages={items.map((i) => ({ to: i.to, label: i.label }))} />
+      <CommandPalette
+        open={palette}
+        onClose={() => setPalette(false)}
+        pages={items.map((i) => ({ to: i.to, label: i.label }))}
+        searches={[
+          ...memory.saved.map((s) => ({ to: `/jobs?${s.query}`, label: s.name ?? s.label, kind: 'Saved' as const })),
+          ...memory.recent
+            .filter((s) => !memory.isSaved(s.query))
+            .map((s) => ({ to: `/jobs?${s.query}`, label: s.label, kind: 'Recent' as const }))
+        ]}
+      />
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} title="Menu" side="left">
         <nav className="mobile-nav" aria-label="Mobile">
@@ -262,8 +274,8 @@ export function Footer() {
             </div>
             <div>
               <h2 className="foot-heading">Platform</h2>
-              {import.meta.env.DEV && <a href="/api/docs">API reference</a>}
-              <a href="/api/health">Status</a>
+              {import.meta.env.DEV && <a href="/api/v1/docs">API reference</a>}
+              <a href="/api/v1/health">Status</a>
             </div>
           </nav>
         </div>

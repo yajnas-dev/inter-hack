@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom';
-import { APPLICATION_STATUSES, type RecruiterOverviewDTO } from '@jobportal/shared';
+import { APPLICATION_STATUSES, type RecruiterDashboardDTO } from '@jobportal/shared';
 import { timeAgo } from '../../shared/lib/format';
 import { Avatar } from '../../shared/ui/Avatar';
-import { LinkButton } from '../../shared/ui/Button';
+import { Button, LinkButton } from '../../shared/ui/Button';
+import { errorMessage } from '../../shared/api/http';
+import { useToast } from '../../shared/ui/toast';
 import { StatusPill, statusLabel } from '../../shared/ui/Chip';
 import { EmptyState, QueryBoundary, Skeleton } from '../../shared/ui/Feedback';
 import { useAuth } from '../auth/AuthContext';
-import { useRecruiterOverview } from './api';
+import { useQuickStatus, useRecruiterOverview } from './api';
 
 const STAGE_VAR: Record<string, string> = {
   APPLIED: 'var(--st-applied)',
@@ -26,7 +28,7 @@ function Kpi({ label, value, hint }: { label: string; value: number; hint?: stri
   );
 }
 
-function Funnel({ data }: { data: RecruiterOverviewDTO }) {
+function Funnel({ data }: { data: RecruiterDashboardDTO }) {
   const max = Math.max(1, ...APPLICATION_STATUSES.map((s) => data.applicantsByStatus[s] ?? 0));
   return (
     <section className="card" aria-labelledby="funnel-title">
@@ -49,7 +51,68 @@ function Funnel({ data }: { data: RecruiterOverviewDTO }) {
   );
 }
 
-function Overview({ data }: { data: RecruiterOverviewDTO }) {
+/** Applications nobody has looked at for three days, with the two most common answers one click away. */
+function NeedsAttention({ data }: { data: RecruiterDashboardDTO }) {
+  const move = useQuickStatus();
+  const toast = useToast();
+  if (data.staleCount === 0) return null;
+  const act = async (id: string, status: 'SHORTLISTED' | 'REJECTED') => {
+    try {
+      await move.mutateAsync({ id, status });
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  };
+  return (
+    <section className="card" aria-labelledby="attention-title">
+      <div className="card-header">
+        <h2 id="attention-title">Needs attention</h2>
+        <span className="muted">{data.staleCount} waiting more than 3 days</span>
+      </div>
+      <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {data.stale.map((a) => (
+          <li key={a.id} className="row-between" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <Link to={`/recruiter/jobs/${a.job.id}/applicants`}>
+                <strong>{a.applicant.name}</strong>
+              </Link>
+              <div className="faint" style={{ fontSize: 'var(--text-xs)' }}>
+                {a.job.title} &middot; applied {timeAgo(a.appliedAt)}
+              </div>
+            </div>
+            <div className="row" style={{ gap: 8 }}>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={move.isPending}
+                aria-label={`Shortlist ${a.applicant.name}`}
+                onClick={() => act(a.id, 'SHORTLISTED')}
+              >
+                Shortlist
+              </Button>
+              <Button
+                size="sm"
+                variant="danger-outline"
+                disabled={move.isPending}
+                aria-label={`Reject ${a.applicant.name}`}
+                onClick={() => act(a.id, 'REJECTED')}
+              >
+                Reject
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {data.staleCount > data.stale.length && (
+        <p className="muted" style={{ marginBottom: 0 }}>
+          and {data.staleCount - data.stale.length} more in your jobs.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function Overview({ data }: { data: RecruiterDashboardDTO }) {
   return (
     <div className="stack">
       <div className="auto-grid">
@@ -58,6 +121,7 @@ function Overview({ data }: { data: RecruiterOverviewDTO }) {
         <Kpi label="New this week" value={data.newThisWeek} />
         <Kpi label="Selected" value={data.applicantsByStatus.SELECTED ?? 0} />
       </div>
+      <NeedsAttention data={data} />
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <Funnel data={data} />
         <section className="card" aria-labelledby="recent-title">

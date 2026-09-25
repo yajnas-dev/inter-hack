@@ -4,18 +4,15 @@ import { PASSWORD, unique } from './helpers';
 test('job search pages through every result (cursor) and filters live in the URL', async ({ page, request }) => {
   const tag = unique('pg').replace(/[^a-z0-9]/gi, '');
   const email = `${unique('pager')}@example.com`;
-  const auth = await request.post('/api/auth/register', { data: { name: 'Pager', email, password: PASSWORD, role: 'RECRUITER' } });
-  const { token } = (await auth.json()) as { token: string };
-  const headers = { Authorization: `Bearer ${token}` };
+  const auth = await request.post('/api/v1/auth/register', { data: { name: 'Pager', email, password: PASSWORD, role: 'RECRUITER' } });
+  const { data } = (await auth.json()) as { data: { accessToken: string } };
+  const headers = { Authorization: `Bearer ${data.accessToken}` };
 
-  const company = (await (await request.post('/api/companies', { headers, data: { name: 'Pager Co' } })).json()) as {
-    company: { id: string };
-  };
+  expect((await request.post('/api/v1/companies', { headers, data: { name: 'Pager Co' } })).status()).toBe(201);
   for (let i = 0; i < 25; i += 1) {
-    const res = await request.post('/api/jobs', {
+    const res = await request.post('/api/v1/jobs', {
       headers,
       data: {
-        company: company.company.id,
         title: `${tag} Engineer ${i}`,
         description: 'Pagination fixture',
         location: 'Remote',

@@ -14,7 +14,7 @@ function useCompany(id: string) {
   return useQuery({
     queryKey: ['companies', id],
     enabled: Boolean(id),
-    queryFn: async () => (await http.get<{ company: CompanyDTO }>(`/companies/${id}`)).data.company
+    queryFn: async () => (await http.get<CompanyDTO>(`/companies/${id}`)).data
   });
 }
 
@@ -24,7 +24,7 @@ export default function CompanyPublicPage() {
   const company = useCompany(id);
   const jobs = useJobSearch({ ...emptyFilters, company: id });
   const state = useSeekerJobState();
-  const list = jobs.data?.pages.flatMap((p) => p.jobs) ?? [];
+  const list = jobs.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
     <div className="container" style={{ maxWidth: 960 }}>
@@ -71,7 +71,7 @@ export default function CompanyPublicPage() {
             </div>
 
             <h2 style={{ marginTop: 'var(--space-5)' }}>
-              Open jobs{jobs.isSuccess && jobs.data.pages[0]?.total !== undefined ? ` (${jobs.data.pages[0].total})` : ''}
+              Open jobs{jobs.isSuccess && jobs.data.pages[0]?.meta.total !== undefined ? ` (${jobs.data.pages[0].meta.total})` : ''}
             </h2>
             {jobs.isError && <ErrorNote error={jobs.error} onRetry={() => void jobs.refetch()} />}
             {jobs.isPending && <ListSkeleton rows={2} />}

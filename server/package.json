@@ -12,9 +12,11 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p . --noEmit",
     "seed:admin": "tsx src/utils/seedAdmin.ts",
-    "db:migrate": "tsx src/migrations/run.ts"
+    "db:migrate": "tsx src/migrations/run.ts",
+    "seed:demo": "tsx src/scripts/seedDemo.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@jobportal/shared": "*",
     "bcrypt": "^6.0.0",
     "compression": "^1.7.4",
@@ -22,7 +24,6 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
-    "express-validator": "^7.2.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.6.0",

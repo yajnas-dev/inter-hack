@@ -181,12 +181,22 @@ test.describe('recruiter pipeline', () => {
     await bar.getByRole('button', { name: 'Move to Shortlisted' }).click();
     await expect(page.getByText('2 candidates moved to Shortlisted.')).toBeVisible();
 
-    // Board: an illegal drop is refused, a legal one moves the card
+    // Board: an illegal drop is refused, a legal one moves the card. The drag is a real press-move-release
+    // gesture: Playwright's one-shot dragTo() from the card centre does not reliably start an HTML5 drag.
     await page.getByRole('button', { name: 'Board' }).click();
-    const gia = page.locator('.k-card', { hasText: 'Gia Novak' });
-    await gia.dragTo(region('Interview'));
+    const drag = async (name: string, stage: string) => {
+      const card = page.locator('.k-card', { hasText: name });
+      await card.scrollIntoViewIfNeeded();
+      const from = (await card.boundingBox())!;
+      await page.mouse.move(from.x + 20, from.y + 12);
+      await page.mouse.down();
+      const to = (await region(stage).boundingBox())!;
+      await page.mouse.move(to.x + to.width / 2, to.y + 40, { steps: 12 });
+      await page.mouse.up();
+    };
+    await drag('Gia Novak', 'Interview');
     await expect(region('Applied')).toContainText('Gia Novak'); // Applied -> Interview is not allowed
-    await gia.dragTo(region('Shortlisted'));
+    await drag('Gia Novak', 'Shortlisted');
     await expect(region('Shortlisted')).toContainText('Gia Novak');
 
     // Keyboard/menu alternative to dragging

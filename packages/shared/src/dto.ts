@@ -1,6 +1,55 @@
-import type { ApplicationStatus, EmploymentType, JobStatus, Role } from './enums';
+import type { ApplicationStatus, EmploymentType, ErrorCode, JobStatus, MatchEngine, MatchVerdict, Role } from './enums';
 
-/** Response shapes exactly as the API sends them (ids are strings, dates are ISO strings). */
+/**
+ * Response shapes exactly as the API sends them: ids are strings, dates are ISO-8601 strings.
+ *
+ * Every JSON response is wrapped in an envelope:
+ *   success -> { success: true,  data, meta?, message? }
+ *   failure -> { success: false, error: { code, message, details?, requestId? } }
+ * Collections put paging information in `meta`.
+ */
+
+// ---- envelope ---------------------------------------------------------------------------------
+
+export interface PageMeta {
+  /** Present for page-number paging (absent when a cursor was used). */
+  page?: number;
+  limit: number;
+  /** Total matching records; omitted on cursor pages where counting would cost a query. */
+  total?: number;
+  totalPages?: number;
+  hasNextPage: boolean;
+  /** Opaque keyset cursor for the next page, or null at the end (only on endpoints that support cursors). */
+  nextCursor?: string | null;
+}
+
+export interface ApiSuccess<T, M = undefined> {
+  success: true;
+  data: T;
+  meta?: M;
+  message?: string;
+}
+
+export interface ErrorDetail {
+  /** Where the bad value was: body, query, params, file. */
+  location?: 'body' | 'query' | 'params' | 'file' | 'header';
+  /** Dotted path of the field, e.g. "education.0.startYear". */
+  field?: string;
+  message: string;
+}
+
+export interface ApiFailure {
+  success: false;
+  error: {
+    code: ErrorCode;
+    message: string;
+    details?: ErrorDetail[];
+    /** Correlates with the server logs and the X-Request-Id response header. */
+    requestId?: string;
+  };
+}
+
+// ---- users & auth -------------------------------------------------------------------------------
 
 export interface UserDTO {
   id: string;
@@ -9,7 +58,20 @@ export interface UserDTO {
   role: Role;
   isActive: boolean;
   createdAt: string;
+  lastLoginAt?: string;
 }
+
+export interface AuthSessionDTO {
+  accessToken: string;
+  tokenType: 'Bearer';
+  /** Access-token lifetime in seconds. */
+  expiresIn: number;
+  user: UserDTO;
+  /** Only for clients that asked for body transport (X-Token-Transport: body); browsers get an httpOnly cookie. */
+  refreshToken?: string;
+}
+
+// ---- companies ----------------------------------------------------------------------------------
 
 export interface CompanyDTO {
   id: string;
@@ -19,8 +81,15 @@ export interface CompanyDTO {
   industry?: string;
   location?: string;
   logoUrl?: string;
-  createdBy?: string;
+  createdAt?: string;
 }
+
+export interface AdminCompanyDTO extends CompanyDTO {
+  createdBy: string;
+  openJobs: number;
+}
+
+// ---- jobs ---------------------------------------------------------------------------------------
 
 export interface JobListItemDTO {
   id: string;
@@ -35,8 +104,13 @@ export interface JobListItemDTO {
   status: JobStatus;
   vacancies?: number;
   createdAt: string;
-  /** Recruiter views only: applications received. */
-  applicantCount?: number;
+  updatedAt?: string;
+}
+
+/** Recruiter and admin views add how many applications each job received. */
+export interface ManagedJobDTO extends JobListItemDTO {
+  applicantCount: number;
+  postedBy?: { id: string; name?: string; email?: string };
 }
 
 export interface JobDetailDTO extends Omit<JobListItemDTO, 'company'> {
@@ -44,35 +118,89 @@ export interface JobDetailDTO extends Omit<JobListItemDTO, 'company'> {
   company: CompanyDTO;
 }
 
-export interface JobListDTO {
-  jobs: JobListItemDTO[];
-  /** Present on the first page of a search (not on cursor pages). */
-  total?: number;
-  page?: number;
-  limit: number;
-  nextCursor: string | null;
+export interface JobFacetsDTO {
+  locations: Array<{ name: string; count: number }>;
+  skills: Array<{ name: string; count: number }>;
+  employmentTypes: Array<{ name: EmploymentType; count: number }>;
+  totalOpen: number;
 }
 
+// ---- resumes & profiles -------------------------------------------------------------------------
+
 export interface ResumeDTO {
-  fileName?: string;
+  id: string;
   originalName: string;
   mimeType: string;
   size: number;
-  uploadedAt?: string;
+  createdAt: string;
+  /** True for the resume new applications will use. */
+  isCurrent?: boolean;
+}
+
+export interface EducationDTO {
+  degree?: string;
+  institution?: string;
+  fieldOfStudy?: string;
+  startYear?: number | null;
+  endYear?: number | null;
+  grade?: string;
+}
+
+export interface ExperienceDTO {
+  title?: string;
+  company?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  isCurrent?: boolean;
+  description?: string;
 }
 
 export interface SeekerProfileDTO {
   id: string;
   user: string;
+  role: 'JOB_SEEKER';
   headline?: string;
   phone?: string;
   address?: string;
-  dateOfBirth?: string;
-  education: Array<Record<string, unknown>>;
-  experience: Array<Record<string, unknown>>;
+  dateOfBirth?: string | null;
+  totalExperienceYears?: number | null;
+  education: EducationDTO[];
+  experience: ExperienceDTO[];
   skills: string[];
   resume: ResumeDTO | null;
+  updatedAt?: string;
 }
+
+export interface RecruiterProfileDTO {
+  id: string;
+  user: string;
+  role: 'RECRUITER';
+  designation?: string;
+  phone?: string;
+  company: CompanyDTO | null;
+}
+
+export interface AdminProfileDTO {
+  user: string;
+  role: 'ADMIN';
+}
+
+export type ProfileDTO = SeekerProfileDTO | RecruiterProfileDTO | AdminProfileDTO;
+
+/** A recruiter's view of an applicant's profile. */
+export interface ApplicantProfileDTO {
+  name?: string;
+  email?: string;
+  headline?: string;
+  phone?: string;
+  address?: string;
+  totalExperienceYears?: number | null;
+  skills: string[];
+  education: EducationDTO[];
+  experience: ExperienceDTO[];
+}
+
+// ---- applications -------------------------------------------------------------------------------
 
 export interface StatusHistoryDTO {
   status: ApplicationStatus;
@@ -84,29 +212,65 @@ export interface ApplicationDTO {
   id: string;
   status: ApplicationStatus;
   appliedAt: string;
+  updatedAt?: string;
   coverNote?: string;
   job: { id: string; title?: string; location?: string; company: { id?: string; name?: string } };
   applicant: { id: string; name?: string; email?: string };
-  resumeSnapshot?: Omit<ResumeDTO, 'fileName' | 'uploadedAt'>;
+  /** The resume sent with this application (immutable once applied). */
+  resume?: Pick<ResumeDTO, 'id' | 'originalName' | 'mimeType' | 'size'>;
+  /** Present on single-application reads. */
   statusHistory?: StatusHistoryDTO[];
+  /** Statuses this application may move to next (recruiter/admin views). */
+  allowedNextStatuses?: ApplicationStatus[];
+  /** Recruiter views of a job's applicants: how many of the job's required skills the applicant lists. */
+  matchCount?: number;
+  matchTotal?: number;
+  /** When the application last changed stage (or was submitted). */
+  stageSince?: string;
 }
 
-export interface AdminSummaryDTO {
-  totalUsers: number;
-  totalSeekers: number;
-  totalRecruiters: number;
-  totalJobs: number;
-  totalJobsOpen: number;
-  totalJobsClosed: number;
-  totalApplications: number;
+export interface NoteDTO {
+  id: string;
+  text: string;
+  createdAt: string;
 }
 
-export interface JobFacetsDTO {
-  locations: Array<{ name: string; count: number }>;
-  skills: Array<{ name: string; count: number }>;
-  employmentTypes: Array<{ name: EmploymentType; count: number }>;
-  totalOpen: number;
+export interface RecruiterDashboardDTO {
+  jobs: { open: number; closed: number };
+  applicantsByStatus: Record<ApplicationStatus, number>;
+  totalApplicants: number;
+  newThisWeek: number;
+  recent: ApplicationDTO[];
+  /** Applications still APPLIED after three days, oldest first (at most five), and how many there are in total. */
+  stale: ApplicationDTO[];
+  staleCount: number;
 }
+
+// ---- AI match analysis --------------------------------------------------------------------------
+
+export interface MatchAnalysisDTO {
+  jobId: string;
+  /** "ai" when the model produced it; "heuristic" when the deterministic fallback did. */
+  engine: MatchEngine;
+  model?: string;
+  /** 0-100. */
+  score: number;
+  verdict: MatchVerdict;
+  summary: string;
+  matchedSkills: string[];
+  missingSkills: string[];
+  strengths: string[];
+  gaps: string[];
+  /** Concrete resume improvements for this job (seeker-facing). */
+  suggestions: string[];
+  experience: { requiredYears: number; candidateYears: number | null };
+  /** Why the result may be weaker than usual (e.g. AI unavailable, resume text not readable). */
+  warnings: string[];
+  generatedAt: string;
+  cached: boolean;
+}
+
+// ---- notifications ------------------------------------------------------------------------------
 
 export interface NotificationDTO {
   id: string;
@@ -118,27 +282,36 @@ export interface NotificationDTO {
   createdAt: string;
 }
 
-export interface NotificationsDTO {
-  items: NotificationDTO[];
-  unread: number;
+// ---- reports (admin) ----------------------------------------------------------------------------
+
+export interface ReportSummaryDTO {
+  totalUsers: number;
+  totalSeekers: number;
+  totalRecruiters: number;
+  totalAdmins: number;
+  activeUsers: number;
+  totalCompanies: number;
+  totalJobs: number;
+  totalJobsOpen: number;
+  totalJobsClosed: number;
+  totalApplications: number;
+  applicationsByStatus: Record<ApplicationStatus, number>;
 }
 
-/** A recruiter's view of an applicant's profile (FR-06). */
-export interface ApplicantProfileDTO {
-  name?: string;
-  email?: string;
-  headline?: string;
-  phone?: string;
-  address?: string;
-  skills: string[];
-  education: Array<Record<string, unknown>>;
-  experience: Array<Record<string, unknown>>;
+export interface TimeSeriesPointDTO {
+  date: string;
+  count: number;
 }
 
-export interface RecruiterOverviewDTO {
-  jobs: { open: number; closed: number };
-  applicantsByStatus: Record<ApplicationStatus, number>;
-  totalApplicants: number;
-  newThisWeek: number;
-  recent: ApplicationDTO[];
+export interface TopJobDTO {
+  jobId: string;
+  title: string;
+  company: string;
+  applicantCount: number;
+}
+
+export interface TopCompanyDTO {
+  companyId: string;
+  name: string;
+  applicantCount: number;
 }

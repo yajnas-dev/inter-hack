@@ -4,13 +4,14 @@ import { connectDB, disconnectDB, ensureIndexes } from '../infra/db';
 import { logger } from '../infra/logger';
 import { jobSnapshots } from './001-job-snapshots';
 import { applicationSnapshots } from './002-application-snapshots';
+import { resumeDocuments } from './003-resume-documents';
 
 interface Migration {
   name: string;
   up(): Promise<void>;
 }
 
-const migrations: Migration[] = [jobSnapshots, applicationSnapshots];
+const migrations: Migration[] = [jobSnapshots, applicationSnapshots, resumeDocuments];
 
 async function main(): Promise<void> {
   await connectDB();

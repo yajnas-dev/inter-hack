@@ -27,7 +27,8 @@
     "format": "biome format --write .",
     "build:all": "npm run build -w server && npm run build -w client",
     "e2e": "npm run build:all && playwright test",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run build:all"
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build:all",
+    "seed:demo": "npm run seed:demo --workspace=server --"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

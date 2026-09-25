@@ -21,12 +21,12 @@ const run = (o) =>
     autocannon({ connections: CONN, duration: DURATION, ...o, url: BASE + (o.path || '') }, (_err, result) => resolve(result))
   );
 async function login(email) {
-  const r = await fetch(`${BASE}/api/auth/login`, {
+  const r = await fetch(`${BASE}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password: 'password123' })
   });
-  return (await r.json()).token;
+  return (await r.json()).data.accessToken;
 }
 
 (async () => {
@@ -57,7 +57,7 @@ async function login(email) {
   try {
     for (let i = 0; i < 60; i += 1) {
       if (
-        await fetch(`${BASE}/api/health`)
+        await fetch(`${BASE}/api/v1/health`)
           .then((r) => r.ok)
           .catch(() => false)
       )
@@ -67,7 +67,9 @@ async function login(email) {
     const [rec, seek, admin] = await Promise.all([login(fixture.recruiter), login(fixture.seeker), login('admin@bench.io')]);
     const auth = (t) => ({ authorization: `Bearer ${t}` });
     const gzip = { 'accept-encoding': 'gzip' };
-    const staleCursor = Buffer.from(JSON.stringify({ t: Date.now() - 86400000, i: '000000000000000000000000' })).toString('base64url');
+    const staleCursor = Buffer.from(JSON.stringify({ s: '-createdAt', v: Date.now() - 86400000, i: '000000000000000000000000' })).toString(
+      'base64url'
+    );
     const loginBody = JSON.stringify({ email: fixture.seeker, password: 'password123' });
     // Unique query string per request => every request misses the response cache and hits MongoDB.
     const miss = (base, headers = gzip) => ({
@@ -80,41 +82,44 @@ async function login(email) {
       ]
     });
     const cases = {
-      health: { path: '/api/health' },
-      'jobs default (gzip)': { path: '/api/jobs', headers: gzip },
-      'jobs limit=50 (gzip)': { path: '/api/jobs?limit=50', headers: gzip },
-      'jobs default (identity)': { path: '/api/jobs' },
-      'jobs cursor page': { path: `/api/jobs?limit=20&cursor=${staleCursor}`, headers: gzip },
-      'jobs location+type+exp': { path: '/api/jobs?location=pune&employmentType=FULL_TIME&experience=5', headers: gzip },
-      'jobs title search': { path: '/api/jobs?title=engineer', headers: gzip },
-      'jobs skills filter': { path: '/api/jobs?skills=react,node.js', headers: gzip },
-      'jobs title+loc+skills+type': { path: '/api/jobs?title=backend&location=bang&skills=python&employmentType=FULL_TIME', headers: gzip },
-      'MISS jobs default': miss('/api/jobs'),
-      'MISS jobs location+type+exp': miss('/api/jobs?location=pune&employmentType=FULL_TIME&experience=5'),
-      'MISS jobs title search': miss('/api/jobs?title=engineer'),
-      'MISS jobs skills filter': miss('/api/jobs?skills=react,node.js'),
-      'MISS jobs title+loc+skills+type': miss('/api/jobs?title=backend&location=bang&skills=python&employmentType=FULL_TIME'),
-      'jobs multi-type+salary+posted': {
-        path: '/api/jobs?employmentType=FULL_TIME,CONTRACT&minSalary=500000&postedWithin=30',
+      health: { path: '/api/v1/health' },
+      'jobs default (gzip)': { path: '/api/v1/jobs', headers: gzip },
+      'jobs limit=50 (gzip)': { path: '/api/v1/jobs?limit=50', headers: gzip },
+      'jobs default (identity)': { path: '/api/v1/jobs' },
+      'jobs cursor page': { path: `/api/v1/jobs?limit=20&cursor=${staleCursor}`, headers: gzip },
+      'jobs location+type+exp': { path: '/api/v1/jobs?location=pune&employmentType=FULL_TIME&experience=5', headers: gzip },
+      'jobs title search': { path: '/api/v1/jobs?title=engineer', headers: gzip },
+      'jobs skills filter': { path: '/api/v1/jobs?skills=react,node.js', headers: gzip },
+      'jobs title+loc+skills+type': {
+        path: '/api/v1/jobs?title=backend&location=bang&skills=python&employmentType=FULL_TIME',
         headers: gzip
       },
-      'jobs sort=salary': { path: '/api/jobs?sort=salary', headers: gzip },
-      'MISS jobs sort=salary': miss('/api/jobs?sort=salary'),
-      'jobs facets': { path: '/api/jobs/facets', headers: gzip },
-      'job similar': { path: `/api/jobs/${fixture.jobId}/similar`, headers: gzip },
-      'job detail': { path: `/api/jobs/${fixture.jobId}`, headers: gzip },
-      'saved ids (seeker)': { path: '/api/seekers/me/saved/ids', headers: auth(seek) },
-      'notifications unread (seeker)': { path: '/api/notifications/unread-count', headers: auth(seek) },
-      'recruiter overview': { path: '/api/recruiters/me/overview', headers: auth(rec) },
-      'jobs/mine (recruiter)': { path: '/api/jobs/mine', headers: auth(rec) },
-      'job applicants (recruiter)': { path: `/api/jobs/${fixture.jobId}/applications`, headers: auth(rec) },
-      'applications/mine (seeker)': { path: '/api/applications/mine', headers: auth(seek) },
-      'admin applications': { path: '/api/admin/applications', headers: auth(admin) },
-      'admin summary': { path: '/api/admin/reports/summary', headers: auth(admin) },
-      'admin top-jobs': { path: '/api/admin/reports/top-jobs', headers: auth(admin) },
-      'admin top-companies': { path: '/api/admin/reports/top-companies', headers: auth(admin) },
+      'MISS jobs default': miss('/api/v1/jobs'),
+      'MISS jobs location+type+exp': miss('/api/v1/jobs?location=pune&employmentType=FULL_TIME&experience=5'),
+      'MISS jobs title search': miss('/api/v1/jobs?title=engineer'),
+      'MISS jobs skills filter': miss('/api/v1/jobs?skills=react,node.js'),
+      'MISS jobs title+loc+skills+type': miss('/api/v1/jobs?title=backend&location=bang&skills=python&employmentType=FULL_TIME'),
+      'jobs multi-type+salary+posted': {
+        path: '/api/v1/jobs?employmentType=FULL_TIME,CONTRACT&minSalary=500000&postedWithin=30',
+        headers: gzip
+      },
+      'jobs sort=salary': { path: '/api/v1/jobs?sort=-salaryMax', headers: gzip },
+      'MISS jobs sort=salary': miss('/api/v1/jobs?sort=-salaryMax'),
+      'jobs facets': { path: '/api/v1/jobs/facets', headers: gzip },
+      'job similar': { path: `/api/v1/jobs/${fixture.jobId}/similar`, headers: gzip },
+      'job detail': { path: `/api/v1/jobs/${fixture.jobId}`, headers: gzip },
+      'saved ids (seeker)': { path: '/api/v1/users/me/saved-jobs/ids', headers: auth(seek) },
+      'notifications unread (seeker)': { path: '/api/v1/notifications/unread-count', headers: auth(seek) },
+      'recruiter overview': { path: '/api/v1/users/me/dashboard', headers: auth(rec) },
+      'jobs/mine (recruiter)': { path: '/api/v1/users/me/jobs', headers: auth(rec) },
+      'job applicants (recruiter)': { path: `/api/v1/jobs/${fixture.jobId}/applications`, headers: auth(rec) },
+      'applications/mine (seeker)': { path: '/api/v1/applications', headers: auth(seek) },
+      'admin applications': { path: '/api/v1/admin/applications', headers: auth(admin) },
+      'admin summary': { path: '/api/v1/reports/summary', headers: auth(admin) },
+      'admin top-jobs': { path: '/api/v1/reports/top-jobs', headers: auth(admin) },
+      'admin top-companies': { path: '/api/v1/reports/top-companies', headers: auth(admin) },
       'login (bcrypt)': {
-        path: '/api/auth/login',
+        path: '/api/v1/auth/login',
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: loginBody,
@@ -138,11 +143,11 @@ async function login(email) {
     }
 
     // Does a login storm starve cheap requests? (native bcrypt must stay off the event loop)
-    const jobUrl = `/api/jobs/${fixture.jobId}`;
+    const jobUrl = `/api/v1/jobs/${fixture.jobId}`;
     const alone = await run({ path: jobUrl });
     const [mixed] = await Promise.all([
       run({ path: jobUrl }),
-      run({ path: '/api/auth/login', method: 'POST', connections: 5, headers: { 'content-type': 'application/json' }, body: loginBody })
+      run({ path: '/api/v1/auth/login', method: 'POST', connections: 5, headers: { 'content-type': 'application/json' }, body: loginBody })
     ]);
     const retained = +(mixed.requests.average / alone.requests.average).toFixed(2);
 

@@ -8,7 +8,11 @@ export default defineConfig({
   server: {
     port: 5173,
     // Same-origin in development too, so the httpOnly refresh cookie works without CORS gymnastics.
-    proxy: { '/api': { target: 'http://127.0.0.1:5000', changeOrigin: false } }
+    // Point API_PROXY_TARGET at a hosted API (e.g. https://jobportal-api.onrender.com) to develop the UI against it.
+    proxy: (() => {
+      const target = process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:5000';
+      return { '/api': { target, changeOrigin: target.startsWith('https://'), secure: true } };
+    })()
   },
   build: {
     target: 'es2022',

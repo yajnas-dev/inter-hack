@@ -1,0 +1,39 @@
+# Render Blueprint: the Job Portal API as one web service.
+# Render cannot reach a MongoDB on your machine, so MONGO_URI must point at a hosted database
+# (MongoDB Atlas free tier works). Set the values marked `sync: false` in the Render dashboard when
+# the Blueprint is created. See docs/DEPLOY.md.
+services:
+  - type: web
+    name: jobportal-api
+    runtime: node
+    region: singapore # closest Render region to India
+    plan: free # sleeps after 15 minutes idle; the first request afterwards takes ~30 s
+    branch: main
+    # devDependencies (tsup, TypeScript) are needed to build; the bundle in server/dist is what runs.
+    buildCommand: npm ci --include=dev && npm run build -w server
+    startCommand: node server/dist/cluster.js
+    healthCheckPath: /api/v1/health/ready
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false # mongodb+srv://user:pass@cluster.mongodb.net/job_portal?retryWrites=true&w=majority
+      - key: JWT_SECRET
+        generateValue: true # random 256-bit value, generated once by Render
+      - key: CLIENT_URL
+        sync: false # comma-separated browser origins allowed by CORS, e.g. https://your-frontend.example.com
+      - key: TRUST_PROXY
+        value: "1" # one reverse proxy (Render's) sits in front: needed for correct client IPs and rate limits
+      - key: WEB_CONCURRENCY
+        value: "1" # the free instance has 0.1 CPU and 512 MB
+      - key: SERVE_CLIENT
+        value: "false" # API only
+      - key: ENABLE_DOCS
+        value: "true" # Swagger UI at /api/v1/docs (turn off for a private deployment)
+      - key: LOG_LEVEL
+        value: info
+      - key: ANTHROPIC_API_KEY
+        sync: false # optional: enables AI match analysis; without it the rule-based estimate is used

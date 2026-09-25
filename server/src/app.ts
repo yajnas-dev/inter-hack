@@ -2,22 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import compression from 'compression';
 import cors from 'cors';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import helmet from 'helmet';
-import mongoose from 'mongoose';
 import { env } from './config/env';
+import { UnsupportedMediaTypeError } from './http/errors';
 import { errorHandler, routeNotFound } from './http/middleware/errorHandler';
-import { authLimiter, globalLimiter } from './http/middleware/rateLimit';
 import { metricsMiddleware, registry, requestLogger } from './http/middleware/observability';
-import { docsRouter } from './docs/swagger';
-import { adminRouter } from './modules/admin/admin.routes';
-import { applicationsRouter } from './modules/applications/applications.routes';
-import { authRouter } from './modules/auth/auth.routes';
-import { companiesRouter } from './modules/companies/companies.routes';
-import { jobsRouter } from './modules/jobs/jobs.routes';
-import { notificationsRouter } from './modules/notifications/notifications.routes';
-import { recruiterRouter, seekerRouter } from './modules/profiles/profiles.routes';
-import { savedRouter } from './modules/saved/saved.routes';
+import { globalLimiter } from './http/middleware/rateLimit';
+import { apiV1 } from './routes';
 
 /** Built React app, if present (production: one process serves both API and UI). */
 function findClientDist(): string | null {
@@ -25,47 +17,48 @@ function findClientDist(): string | null {
   return candidates.find((dir) => fs.existsSync(path.join(dir, 'index.html'))) ?? null;
 }
 
+/** Bodies must be JSON (or multipart for uploads): anything else is 415 rather than a confusing validation error. */
+const requireKnownContentType: RequestHandler = (req, _res, next) => {
+  const hasBody = Number(req.headers['content-length'] ?? 0) > 0 || req.headers['transfer-encoding'] !== undefined;
+  if (!hasBody || !['POST', 'PUT', 'PATCH'].includes(req.method)) return next();
+  if (req.is('application/json') || req.is('multipart/form-data')) return next();
+  next(new UnsupportedMediaTypeError('Send the request body as application/json (or multipart/form-data for file uploads)'));
+};
+
+/** API responses are private by default; the anonymous job cache opts in to public caching explicitly. */
+const noStore: RequestHandler = (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+};
+
 export function createApp(): express.Express {
   const app = express();
 
-  app.set('trust proxy', 1);
-  app.set('query parser', 'simple'); // no nested objects: closes ?role[$ne]=x operator injection, cheaper than qs
+  // Only trust X-Forwarded-For from a known number of proxies: trusting it blindly lets any client spoof its IP
+  // and walk around the per-IP rate limits.
+  app.set('trust proxy', env.trustProxy);
+  app.set('query parser', 'simple'); // flat strings only: no ?role[$ne]=x operator injection
   app.set('etag', false); // the public cache sets its own; hashing every private response is wasted CPU
   app.disable('x-powered-by');
 
   app.use(requestLogger);
   if (env.enableMetrics) app.use(metricsMiddleware);
   app.use(helmet());
-  app.use(cors({ origin: env.clientUrl, credentials: true }));
+  app.use(
+    cors({
+      origin: env.corsOrigins,
+      credentials: true,
+      exposedHeaders: ['X-Request-Id', 'Location', 'Retry-After', 'RateLimit', 'RateLimit-Policy', 'Content-Disposition']
+    })
+  );
   app.use(compression());
-  app.use(express.json({ limit: '100kb' }));
-  app.use('/api', globalLimiter);
 
-  // Liveness: the process is up. Readiness: it can serve traffic (database connected).
-  app.get('/api/health', (_req, res) => void res.json({ status: 'ok' }));
-  app.get('/api/ready', (_req, res) => {
-    const ready = mongoose.connection.readyState === 1;
-    res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'db_unavailable' });
-  });
-  if (env.enableMetrics) {
-    app.get('/api/metrics', async (_req, res) => {
-      res.type(registry.contentType).send(await registry.metrics());
-    });
-  }
-
-  if (env.enableDocs) app.use('/api', docsRouter());
-
-  app.use('/api/auth', authLimiter, authRouter);
-  // Saved jobs live under /api/seekers/me/saved; mounted first so the seeker router never has to know about them.
-  app.use('/api/seekers/me/saved', savedRouter);
-  app.use('/api/seekers', seekerRouter);
-  app.use('/api/recruiters', recruiterRouter);
-  app.use('/api/companies', companiesRouter);
-  app.use('/api/jobs', jobsRouter);
-  app.use('/api/applications', applicationsRouter);
-  app.use('/api/notifications', notificationsRouter);
-  app.use('/api/admin', adminRouter);
-  app.use('/api', routeNotFound);
+  const api = express.Router();
+  api.use(noStore, globalLimiter, requireKnownContentType, express.json({ limit: '100kb', strict: true }));
+  api.use('/v1', apiV1());
+  if (env.enableMetrics) api.get('/metrics', async (_req, res) => void res.type(registry.contentType).send(await registry.metrics()));
+  api.use(routeNotFound);
+  app.use('/api', api);
 
   const clientDist = env.serveClient && !env.isTest ? findClientDist() : null;
   if (clientDist) {

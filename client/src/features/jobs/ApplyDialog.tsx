@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { errorMessage } from '../../shared/api/http';
+import { usePersistedState } from '../../shared/lib/hooks';
 import { Button } from '../../shared/ui/Button';
 import { Dialog } from '../../shared/ui/Dialog';
 import { TextArea } from '../../shared/ui/fields';
@@ -8,6 +9,7 @@ import { Icon } from '../../shared/ui/Icon';
 import { useToast } from '../../shared/ui/toast';
 import { useApply } from '../applications/api';
 import { useResumeMutations, useSeekerProfile } from '../profile/api';
+import { useSimilarJobs } from './api';
 
 interface Props {
   open: boolean;
@@ -26,10 +28,20 @@ export default function ApplyDialog({ open, onClose, jobId, jobTitle, companyNam
   const apply = useApply();
   const { upload } = useResumeMutations();
   const toast = useToast();
-  const [note, setNote] = useState('');
+  // Kept between attempts so a half-written note survives closing the dialog or a reload.
+  const [note, setNote] = usePersistedState('jp.coverDraft', '');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const similar = useSimilarJobs(done ? jobId : undefined);
+
+  const snippets = [
+    `I'm excited to apply for the ${jobTitle} role${companyName ? ` at ${companyName}` : ''}.`,
+    'My experience lines up with the skills you list, and I would be glad to walk you through it.',
+    'I am available to start soon and happy to talk whenever suits you.'
+  ];
+  const addSnippet = (text: string) =>
+    setNote((n) => (n.includes(text) ? n : `${n}${n && !n.endsWith('\n') ? ' ' : ''}${text}`).slice(0, 2000));
 
   const resume = profile.data?.resume;
   const close = () => {
@@ -92,6 +104,21 @@ export default function ApplyDialog({ open, onClose, jobId, jobTitle, companyNam
           <Link to="/seeker/jobs" onClick={close}>
             Track your applications
           </Link>
+          {similar.data && similar.data.length > 0 && (
+            <div style={{ marginTop: 16, textAlign: 'left', width: '100%' }}>
+              <h4>Similar jobs</h4>
+              <ul className="stack-sm" style={{ listStyle: 'none', padding: 0 }}>
+                {similar.data.slice(0, 3).map((s) => (
+                  <li key={s.id}>
+                    <Link to={`/jobs/${s.id}`} onClick={close}>
+                      {s.title}
+                    </Link>
+                    <span className="muted"> &middot; {s.company.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       ) : (
         <div className="stack">
@@ -132,6 +159,14 @@ export default function ApplyDialog({ open, onClose, jobId, jobTitle, companyNam
             onChange={(e) => setNote(e.target.value)}
             hint="Tell the recruiter why you're a good fit."
           />
+          <div className="tags" role="group" aria-label="Starter sentences">
+            {snippets.map((text, i) => (
+              <button key={text} type="button" className="chip" onClick={() => addSnippet(text)}>
+                <Icon name="plus" />
+                {['Interest', 'Skills', 'Availability'][i]}
+              </button>
+            ))}
+          </div>
           {error && (
             <div className="error" role="alert">
               {error}

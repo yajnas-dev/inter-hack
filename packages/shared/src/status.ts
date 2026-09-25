@@ -19,3 +19,6 @@ export function nextStatuses(current: ApplicationStatus): readonly ApplicationSt
 export function isValidTransition(current: ApplicationStatus, next: ApplicationStatus): boolean {
   return nextStatuses(current).includes(next);
 }
+
+/** SELECTED and REJECTED are final: no transition leaves them. */
+export const isTerminalStatus = (status: ApplicationStatus): boolean => nextStatuses(status).length === 0;

@@ -9,11 +9,13 @@ import { useAuth } from '../auth/AuthContext';
 import { emptyFilters, useFacets, useJobSearch } from '../jobs/api';
 import JobCard from '../jobs/JobCard';
 import { useSeekerJobState } from '../jobs/seekerState';
+import { PageLoading } from '../../shared/ui/Feedback';
+import SeekerHome from './SeekerHome';
 
 const reveal = (i: number) => ({ '--i': i }) as React.CSSProperties;
 
 /** Landing page: copy on the left, a live API exchange on the right, then hairline-ruled sections. */
-export default function HomePage() {
+function Landing() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const facets = useFacets();
@@ -23,7 +25,7 @@ export default function HomePage() {
   const [where, setWhere] = useState('');
 
   const go = (params: Record<string, string>) => navigate(`/jobs?${new URLSearchParams(params).toString()}`);
-  const jobs = (latest.data?.pages[0]?.jobs ?? []).slice(0, 6);
+  const jobs = (latest.data?.pages[0]?.items ?? []).slice(0, 6);
   const sample = jobs[0];
   const open = facets.data?.totalOpen;
   const origin = import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin;
@@ -90,7 +92,7 @@ export default function HomePage() {
 
         <div className="demo reveal" style={reveal(2)} role="group" aria-label="Example API request and response">
           <CodeCard file="request.sh">
-            <P>$</P> <F>curl</F> "{origin}/api/jobs?limit=1"
+            <P>$</P> <F>curl</F> "{origin}/api/v1/jobs?limit=1"
             {'\n'}
             {'  '}-H <S>"Accept: application/json"</S>
           </CodeCard>
@@ -201,7 +203,7 @@ export default function HomePage() {
               </p>
             </div>
             <CodeCard file="applications.http" inline>
-              <F>PATCH</F> /api/applications/<P>:id</P>/status
+              <F>PATCH</F> /api/v1/applications/<P>:id</P>
               {'\n'}
               <P>{'{ '}</P>
               <K>"status"</K>
@@ -269,7 +271,7 @@ export default function HomePage() {
               </div>
             </div>
             <CodeCard file="post-a-job.http" status="201 Created">
-              <F>POST</F> /api/jobs
+              <F>POST</F> /api/v1/jobs
               {'\n'}
               <P>{'{'}</P>
               {'\n  '}
@@ -306,4 +308,11 @@ export default function HomePage() {
       )}
     </>
   );
+}
+
+/** Visitors get the landing page; a signed-in job seeker gets a home that continues their work. */
+export default function HomePage() {
+  const { user, status } = useAuth();
+  if (status === 'loading') return <PageLoading label="Loading" />;
+  return user?.role === 'JOB_SEEKER' ? <SeekerHome /> : <Landing />;
 }

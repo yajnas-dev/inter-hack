@@ -42,11 +42,11 @@ export default function ResumePage() {
                   <div>
                     <strong>{p.resume.originalName}</strong>
                     <div className="faint" style={{ fontSize: 'var(--text-sm)' }}>
-                      Uploaded {formatDate(p.resume.uploadedAt)}
+                      Uploaded {formatDate(p.resume.createdAt)}
                     </div>
                   </div>
                   <div className="row">
-                    <Button variant="secondary" icon="download" onClick={() => attempt(() => downloadMyResume(p.resume!.originalName))}>
+                    <Button variant="secondary" icon="download" onClick={() => attempt(() => downloadMyResume(p.resume!))}>
                       Download
                     </Button>
                     <Button variant="danger-outline" icon="trash" onClick={() => setConfirmDelete(true)}>
@@ -96,7 +96,7 @@ export default function ResumePage() {
               loading={remove.isPending}
               onCancel={() => setConfirmDelete(false)}
               onConfirm={async () => {
-                await attempt(() => remove.mutateAsync(), 'Resume deleted.');
+                if (p.resume) await attempt(() => remove.mutateAsync(p.resume!.id), 'Resume deleted.');
                 setConfirmDelete(false);
               }}
             />

@@ -17,7 +17,7 @@ export function buildSearchFilter(query: JobListQuery): FilterQuery<JobAttrs> {
 
   if (query.title) {
     const words = tokenize(query.title);
-    if (words.length) filter.titleTokens = { $all: words };
+    if (words.length) filter.titleTokens = { $all: words.map((w) => new RegExp(`^${escapeRegex(w)}`)) };
   }
   // Anchored prefix on a lower-cased mirror: case-insensitive AND index-assisted. User input is escaped.
   if (query.location) filter.locationLower = { $regex: `^${escapeRegex(query.location.toLowerCase())}` };
@@ -153,7 +153,7 @@ export async function listAll(query: AdminJobListQuery) {
   if (query.company) filter.company = query.company;
   if (query.q) {
     const words = tokenize(query.q);
-    if (words.length) filter.titleTokens = { $all: words };
+    if (words.length) filter.titleTokens = { $all: words.map((w) => new RegExp(`^${escapeRegex(w)}`)) };
   }
   const [rows, total] = await Promise.all([
     Job.find(filter)

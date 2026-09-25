@@ -1,0 +1,5 @@
+/* Preflight is disabled in tailwind.config.js, so "base" only contributes the --tw-* defaults that
+   ring, shadow and transform utilities read. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.test
+dist/
+build/
+*.log
+test-results/
+playwright-report/
+bench/.bench-fixture.json
+screenshots/

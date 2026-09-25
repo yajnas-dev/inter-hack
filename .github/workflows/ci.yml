@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MONGO_URI_TEST: mongodb://127.0.0.1:27017/job_portal_test?replicaSet=rs0
+    steps:
+      - uses: actions/checkout@v4
+
+      # Transactions and change streams need a replica set; the action initiates a single-node one.
+      - uses: supercharge/mongodb-github-action@1.11.0
+        with:
+          mongodb-version: '6.0'
+          mongodb-replica-set: rs0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build:all
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests (production build, 2 cluster workers)
+        run: npx playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

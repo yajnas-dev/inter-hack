@@ -1,0 +1,56 @@
+/* Scope for the animated sign-in blocks (Tailwind). Variables are channel triplets so utilities such as
+   bg-foreground/15 can add alpha. They are scoped here so they cannot collide with the app's own
+   --border, --radius and --bg tokens. */
+.anim-auth {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 0%;
+  --skeleton: 0 0% 90%;
+  --btn-border: 214 31.8% 91.4%;
+  --input: 220 20% 90%;
+}
+:root[data-theme="dark"] .anim-auth {
+  --background: 222 94% 5%;
+  --foreground: 0 0% 100%;
+  --skeleton: 218 36% 16%;
+  --btn-border: 217 32.6% 17.5%;
+  --input: 219 63% 16%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .anim-auth {
+    --background: 222 94% 5%;
+    --foreground: 0 0% 100%;
+    --skeleton: 218 36% 16%;
+    --btn-border: 217 32.6% 17.5%;
+    --input: 219 63% 16%;
+  }
+}
+
+/* The slice of Tailwind's preflight the blocks rely on, at zero specificity so utilities still win. */
+:where(.anim-auth) *,
+:where(.anim-auth) *::before,
+:where(.anim-auth) *::after {
+  box-sizing: border-box;
+  border: 0 solid hsl(var(--btn-border));
+}
+:where(.anim-auth) button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+:where(.anim-auth) input,
+:where(.anim-auth) select {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+:where(.anim-auth) :is(h1, h2, p, hr) {
+  margin: 0;
+}
+:where(.anim-auth) hr {
+  height: 0;
+}
+:where(.anim-auth) svg {
+  display: block;
+}

@@ -1,0 +1,126 @@
+{
+  "health": {
+    "minRps": 6226,
+    "maxP99": 10
+  },
+  "jobs default (gzip)": {
+    "minRps": 6675,
+    "maxP99": 10
+  },
+  "jobs limit=50 (gzip)": {
+    "minRps": 6116,
+    "maxP99": 10
+  },
+  "jobs default (identity)": {
+    "minRps": 6368,
+    "maxP99": 10
+  },
+  "jobs cursor page": {
+    "minRps": 6093,
+    "maxP99": 10
+  },
+  "jobs location+type+exp": {
+    "minRps": 6040,
+    "maxP99": 10
+  },
+  "jobs title search": {
+    "minRps": 6317,
+    "maxP99": 10
+  },
+  "jobs skills filter": {
+    "minRps": 6210,
+    "maxP99": 10
+  },
+  "jobs title+loc+skills+type": {
+    "minRps": 6010,
+    "maxP99": 10
+  },
+  "MISS jobs default": {
+    "minRps": 699,
+    "maxP99": 63
+  },
+  "MISS jobs location+type+exp": {
+    "minRps": 681,
+    "maxP99": 68
+  },
+  "MISS jobs title search": {
+    "minRps": 744,
+    "maxP99": 60
+  },
+  "MISS jobs skills filter": {
+    "minRps": 743,
+    "maxP99": 58
+  },
+  "MISS jobs title+loc+skills+type": {
+    "minRps": 1048,
+    "maxP99": 50
+  },
+  "jobs multi-type+salary+posted": {
+    "minRps": 3791,
+    "maxP99": 10
+  },
+  "jobs sort=salary": {
+    "minRps": 4011,
+    "maxP99": 10
+  },
+  "MISS jobs sort=salary": {
+    "minRps": 649,
+    "maxP99": 70
+  },
+  "jobs facets": {
+    "minRps": 6321,
+    "maxP99": 10
+  },
+  "job similar": {
+    "minRps": 6382,
+    "maxP99": 10
+  },
+  "job detail": {
+    "minRps": 6313,
+    "maxP99": 10
+  },
+  "saved ids (seeker)": {
+    "minRps": 1876,
+    "maxP99": 23
+  },
+  "notifications unread (seeker)": {
+    "minRps": 1909,
+    "maxP99": 25
+  },
+  "recruiter overview": {
+    "minRps": 559,
+    "maxP99": 80
+  },
+  "jobs/mine (recruiter)": {
+    "minRps": 387,
+    "maxP99": 115
+  },
+  "job applicants (recruiter)": {
+    "minRps": 767,
+    "maxP99": 50
+  },
+  "applications/mine (seeker)": {
+    "minRps": 1007,
+    "maxP99": 43
+  },
+  "admin applications": {
+    "minRps": 102,
+    "maxP99": 460
+  },
+  "admin summary": {
+    "minRps": 5152,
+    "maxP99": 10
+  },
+  "admin top-jobs": {
+    "minRps": 4815,
+    "maxP99": 10
+  },
+  "admin top-companies": {
+    "minRps": 4455,
+    "maxP99": 10
+  },
+  "login (bcrypt)": {
+    "minRps": 42,
+    "maxP99": 420
+  }
+}

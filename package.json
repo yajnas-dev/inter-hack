@@ -1,0 +1,38 @@
+{
+  "name": "job-portal",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "test:server": "npm test --workspace=server",
+    "seed:admin": "npm run seed:admin --workspace=server",
+    "db:start": "C:/Users/Sanjay/mongodb/mongodb-win32-x86_64-windows-6.0.14/bin/mongod.exe --dbpath C:/Users/Sanjay/mongodb/data --bind_ip 127.0.0.1 --port 27017 --replSet rs0",
+    "test": "npm test --workspace=server",
+    "db:migrate": "npm run db:migrate --workspace=server",
+    "bench:seed": "tsx bench/seed.js",
+    "bench": "node bench/run.js",
+    "start": "npm run build --workspace=server && npm start --workspace=server",
+    "build": "npm run build:all",
+    "db:init": "node scripts/init-replset.js",
+    "dev": "npm run dev --workspace=server",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "build:all": "npm run build -w server && npm run build -w client",
+    "e2e": "npm run build:all && playwright test",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build:all"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@biomejs/biome": "^2.5.14",
+    "@playwright/test": "^1.63.0",
+    "autocannon": "^8.0.0"
+  }
+}

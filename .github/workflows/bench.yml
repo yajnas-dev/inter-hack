@@ -1,0 +1,29 @@
+name: Benchmark
+
+# Manual: shared CI runners are too noisy to gate every push on throughput numbers.
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: 'Worker processes'
+        default: '1'
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supercharge/mongodb-github-action@1.11.0
+        with:
+          mongodb-version: '6.0'
+          mongodb-replica-set: rs0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run bench:seed
+      - run: npm run bench
+        env:
+          BENCH_WORKERS: ${{ inputs.workers }}

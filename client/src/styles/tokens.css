@@ -1,0 +1,185 @@
+/* Design tokens, "Cobalt": cool paper, one electric-cobalt signal, hairlines for structure.
+   Light is the default; dark follows the OS unless the user picked a theme (data-theme on <html>,
+   set before paint by /theme-init.js). Text pairs are checked to >= 4.5:1 by the axe e2e scan. */
+:root {
+  color-scheme: light;
+
+  --bg: oklch(98.5% 0.004 250);
+  --surface: oklch(99.6% 0.002 250);
+  --surface-2: oklch(96.5% 0.005 252);
+  --surface-hover: oklch(95% 0.006 253);
+  --border: oklch(91% 0.008 255);
+  --border-strong: oklch(83% 0.011 255);
+
+  --text: oklch(24% 0.02 258);
+  --text-2: oklch(34% 0.018 257);
+  --text-3: oklch(50% 0.014 255);
+
+  --brand: oklch(50% 0.21 256);
+  --brand-hover: oklch(44% 0.2 256);
+  --brand-soft: oklch(58% 0.2 256 / 0.1);
+  --on-brand: oklch(99% 0.004 256);
+
+  --success: oklch(45% 0.12 155);
+  --success-soft: oklch(94% 0.04 155);
+  --warn: oklch(47% 0.1 70);
+  --warn-soft: oklch(95% 0.05 85);
+  --danger: oklch(50% 0.19 27);
+  --danger-soft: oklch(95% 0.03 27);
+  --neutral-soft: oklch(94% 0.006 254);
+
+  --st-applied: oklch(40% 0.02 257);
+  --st-applied-bg: oklch(94% 0.006 254);
+  --st-shortlisted: oklch(45% 0.19 256);
+  --st-shortlisted-bg: oklch(94% 0.03 256);
+  --st-interview: oklch(45% 0.1 70);
+  --st-interview-bg: oklch(95% 0.05 85);
+  --st-selected: oklch(42% 0.12 155);
+  --st-selected-bg: oklch(94% 0.04 155);
+  --st-rejected: oklch(48% 0.19 27);
+  --st-rejected-bg: oklch(95% 0.03 27);
+
+  --shadow-1: 0 1px 2px oklch(22% 0.016 260 / 0.08);
+  --shadow-2: 0 4px 16px oklch(22% 0.016 260 / 0.1);
+  --shadow-3: 0 12px 40px oklch(22% 0.016 260 / 0.2);
+  --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--brand);
+
+  /* Code cards and the dark band are graphite in both themes. */
+  --graphite: oklch(22% 0.016 260);
+  --graphite-2: oklch(27% 0.018 260);
+  --graphite-3: oklch(34% 0.02 260);
+  --band: oklch(20% 0.016 260);
+  --band-ink: oklch(92% 0.01 255);
+  --band-ink-2: oklch(80% 0.012 256);
+  --band-muted: oklch(70% 0.014 256);
+  --code-text: oklch(86% 0.01 258);
+  --code-dim: oklch(66% 0.014 258);
+  --code-string: oklch(82% 0.04 150);
+  --code-accent: oklch(72% 0.16 256);
+  --code-fn: oklch(82% 0.09 200);
+  --code-num: oklch(80% 0.08 70);
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-pill: 4px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --font-display: "Space Grotesk Variable", "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --tracking-display: -0.03em;
+  --tracking-snug: -0.015em;
+  --tracking-label: 0.06em;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: clamp(1.125rem, 1.05rem + 0.4vw, 1.25rem);
+  --text-xl: clamp(1.375rem, 1.2rem + 0.9vw, 1.75rem);
+  --text-2xl: clamp(1.75rem, 1.3rem + 2vw, 2.75rem);
+  --step-hero: clamp(2.6rem, 5.2vw + 0.8rem, 4.5rem);
+  --step-section: clamp(1.9rem, 3.2vw, 2.75rem);
+  --step-lede: clamp(1.0625rem, 0.8vw + 0.7rem, 1.25rem);
+  --section-y: clamp(4rem, 8vw, 7rem);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-quiet: 240ms cubic-bezier(0.4, 0, 0.2, 1);
+  --header-h: 60px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: oklch(17% 0.014 260);
+  --surface: oklch(21% 0.016 260);
+  --surface-2: oklch(24% 0.017 260);
+  --surface-hover: oklch(27% 0.018 260);
+  --border: oklch(31% 0.018 260);
+  --border-strong: oklch(40% 0.02 260);
+
+  --text: oklch(93% 0.01 255);
+  --text-2: oklch(80% 0.012 256);
+  --text-3: oklch(69% 0.014 256);
+
+  --brand: oklch(72% 0.16 256);
+  --brand-hover: oklch(80% 0.13 256);
+  --brand-soft: oklch(58% 0.2 256 / 0.16);
+  --on-brand: oklch(18% 0.02 260);
+
+  --success: oklch(78% 0.14 155);
+  --success-soft: oklch(30% 0.05 155);
+  --warn: oklch(82% 0.12 80);
+  --warn-soft: oklch(31% 0.05 80);
+  --danger: oklch(74% 0.15 25);
+  --danger-soft: oklch(30% 0.06 25);
+  --neutral-soft: oklch(27% 0.018 260);
+
+  --st-applied: oklch(80% 0.012 256);
+  --st-applied-bg: oklch(28% 0.018 260);
+  --st-shortlisted: oklch(78% 0.13 256);
+  --st-shortlisted-bg: oklch(30% 0.07 256);
+  --st-interview: oklch(82% 0.12 80);
+  --st-interview-bg: oklch(31% 0.05 80);
+  --st-selected: oklch(78% 0.14 155);
+  --st-selected-bg: oklch(30% 0.05 155);
+  --st-rejected: oklch(74% 0.15 25);
+  --st-rejected-bg: oklch(30% 0.06 25);
+
+  --shadow-1: 0 0 0 1px oklch(100% 0 0 / 0.03);
+  --shadow-2: 0 0 0 1px oklch(100% 0 0 / 0.07), 0 8px 24px oklch(0% 0 0 / 0.5);
+  --shadow-3: 0 0 0 1px oklch(100% 0 0 / 0.09), 0 16px 48px oklch(0% 0 0 / 0.6);
+  --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--brand);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: oklch(17% 0.014 260);
+    --surface: oklch(21% 0.016 260);
+    --surface-2: oklch(24% 0.017 260);
+    --surface-hover: oklch(27% 0.018 260);
+    --border: oklch(31% 0.018 260);
+    --border-strong: oklch(40% 0.02 260);
+
+    --text: oklch(93% 0.01 255);
+    --text-2: oklch(80% 0.012 256);
+    --text-3: oklch(69% 0.014 256);
+
+    --brand: oklch(72% 0.16 256);
+    --brand-hover: oklch(80% 0.13 256);
+    --brand-soft: oklch(58% 0.2 256 / 0.16);
+    --on-brand: oklch(18% 0.02 260);
+
+    --success: oklch(78% 0.14 155);
+    --success-soft: oklch(30% 0.05 155);
+    --warn: oklch(82% 0.12 80);
+    --warn-soft: oklch(31% 0.05 80);
+    --danger: oklch(74% 0.15 25);
+    --danger-soft: oklch(30% 0.06 25);
+    --neutral-soft: oklch(27% 0.018 260);
+
+    --st-applied: oklch(80% 0.012 256);
+    --st-applied-bg: oklch(28% 0.018 260);
+    --st-shortlisted: oklch(78% 0.13 256);
+    --st-shortlisted-bg: oklch(30% 0.07 256);
+    --st-interview: oklch(82% 0.12 80);
+    --st-interview-bg: oklch(31% 0.05 80);
+    --st-selected: oklch(78% 0.14 155);
+    --st-selected-bg: oklch(30% 0.05 155);
+    --st-rejected: oklch(74% 0.15 25);
+    --st-rejected-bg: oklch(30% 0.06 25);
+
+    --shadow-1: 0 0 0 1px oklch(100% 0 0 / 0.03);
+    --shadow-2: 0 0 0 1px oklch(100% 0 0 / 0.07), 0 8px 24px oklch(0% 0 0 / 0.5);
+    --shadow-3: 0 0 0 1px oklch(100% 0 0 / 0.09), 0 16px 48px oklch(0% 0 0 / 0.6);
+    --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--brand);
+  }
+}
